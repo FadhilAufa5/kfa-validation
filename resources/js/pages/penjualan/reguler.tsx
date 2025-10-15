@@ -1,7 +1,7 @@
 import { AnimatedTypeCards } from '@/components/AnimatedTypeCards';
 import AppLayout from '@/layouts/app-layout';
 import { Head } from '@inertiajs/react';
-import { AlertTriangle, FileText, RefreshCw } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { useState } from 'react';
 
 export default function ValidationIndexPage() {
@@ -13,24 +13,6 @@ export default function ValidationIndexPage() {
             icon: FileText,
             color: 'text-blue-500',
             href: '/penjualan/reguler',
-        },
-        {
-            title: 'ECommerce',
-            icon: RefreshCw,
-            color: 'text-green-500',
-            href: '/penjualan/ecommerce',
-        },
-        {
-            title: 'Debitur',
-            icon: AlertTriangle,
-            color: 'text-red-500',
-            href: '/penjualan/debitur',
-        },
-        {
-            title: 'Konsi',
-            icon: AlertTriangle,
-            color: 'text-red-500',
-            href: '/penjualan/konsi',
         },
     ];
 
