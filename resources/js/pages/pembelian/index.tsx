@@ -1,8 +1,9 @@
 import AppLayout from "@/layouts/app-layout";
-import { Head } from "@inertiajs/react";
+import { Head, Link } from "@inertiajs/react";
 import { useState } from "react";
 import { Card } from "@/components/card";
 import { FileText, RefreshCw, AlertTriangle } from "lucide-react";
+import { type BreadcrumbItem } from "@/types";
 
 export default function ValidationIndexPage() {
   const [selectedType, setSelectedType] = useState<string | null>(null);
@@ -30,10 +31,15 @@ export default function ValidationIndexPage() {
     },
   ];
 
+   const breadcrumbs: BreadcrumbItem[] = [
+          { title: "Dashboard", href: "/dashboard" },
+          { title: "Pembelian", href: "/pembelian" },
+        ];
+
   return (
-    <AppLayout>
+    <AppLayout breadcrumbs={breadcrumbs}    >
       <Head title="Document Validation Portal" />
-      <div className="px-8 py-10">
+      <div className="px-6 py-6">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -59,9 +65,9 @@ export default function ValidationIndexPage() {
           ))}
         </div>
            {selectedType && (
-                    <div className="mt-4 text-sm text-green-600 dark:text-green-400">
-                        ✅ Anda memilih:{' '}
-                        <span className="font-semibold">{selectedType}</span>
+                    <div className="mt-4 text-sm text-gray-900 dark:text-gray-900">
+                        Anda memilih: {' '}   
+                        <span className="font-semibold text-green-600">{selectedType}</span> ✅
                     </div>
                 )}
             

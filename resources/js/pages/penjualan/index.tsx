@@ -1,8 +1,9 @@
 import AppLayout from "@/layouts/app-layout";
-import { Head, Link } from "@inertiajs/react";
+import { Head } from "@inertiajs/react";
 import { useState } from "react";
 import { Card } from "@/components/card";
-import { FileText, RefreshCw, AlertTriangle, Plus } from "lucide-react";
+import { FileText, RefreshCw, AlertTriangle, CheckCircle, ShoppingBasket} from "lucide-react";
+import { type BreadcrumbItem } from "@/types";
 
 export default function ValidationIndexPage() {
   const [selectedType, setSelectedType] = useState<string | null>(null);
@@ -12,77 +13,75 @@ export default function ValidationIndexPage() {
       title: "Reguler",
       description:
         "Digunakan untuk transaksi pembelian normal tanpa kondisi khusus.",
-      href: "/penjualan/reguler",
       color: "text-blue-500",
       icon: FileText,
     },
     {
-      title: "Ecommerce",
-      description: "Gunakan jenis ini untuk transaksi penjualan online.",
-      href: "/penjualan/ecommerce",
+      title: "Debitur",
+      description: "Untuk pembelian yang bersifat mendesak dan harus diproses segera.",
       color: "text-green-500",
-      icon: RefreshCw,
+      icon: AlertTriangle,
     },
     {
-      title: "Debitur",
+      title: "Ecommerce",
       description:
-        "Digunakan untuk transaksi dengan pelanggan berstatus debitur.",
-      href: "/penjualan/debitur",
-      color: "text-yellow-500",
-      icon: AlertTriangle,
+        "Untuk pembelian yang bersifat mendesak dan harus diproses segera.",
+      color: "text-red-500",
+      icon: ShoppingBasket,
     },
     {
       title: "Konsi",
       description:
-        "Gunakan jenis ini untuk transaksi penjualan konsinyasi (titipan barang).",
-      href: "/penjualan/konsi",
-      color: "text-purple-500",
-      icon: Plus,
+        "Untuk pembelian yang bersifat mendesak dan harus diproses segera.",
+      color: "text-red-500",
+      icon: CheckCircle,
     },
   ];
 
+  const breadcrumbs: BreadcrumbItem[] = [
+        { title: "Dashboard", href: "/dashboard" },
+        { title: "Penjualan", href: "/penjualan" },
+      ];
+
   return (
-    <AppLayout>
+    <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Document Validation Portal" />
+      <div className="px-6 py-6">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Pilih Jenis Dokumen
+          </h1>
+          <p className="py-2 text-sm text-gray-700 dark:text-gray-300 font-normal max-w-xl">
+            Silakan pilih salah satu jenis dokumen di bawah ini untuk mengunggah
+            berkas terkait proses validasi pembelian.
+          </p>
+        </div>
 
-      <div className="px-8 py-10">
-        {/* Judul halaman */}
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          Pilih Jenis Dokumen
-        </h1>
-        <p className="text-sm text-gray-700 dark:text-gray-400 mb-6">
-          Pilih salah satu jenis dokumen penjualan di bawah ini untuk melanjutkan proses validasi.
-        </p>
-
-        {/* Grid daftar card */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+        {/* Card Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {documentTypes.map((doc) => (
-            <div key={doc.title}>
-              {/* Gunakan Link agar navigasi tidak reload halaman */}
-              <Link
-                href={doc.href}
-                onClick={() => setSelectedType(doc.title)}
-                className="block h-full"
-              >
-                <Card
-                  title={doc.title}
-                  description={doc.description}
-                  href={doc.href}
-                  color={doc.color}
-                  icon={doc.icon}
-                />
-              </Link>
+            <div key={doc.title} onClick={() => setSelectedType(doc.title)}>
+              <Card
+                title={doc.title}
+                description={doc.description}
+                color={doc.color}
+                icon={doc.icon}
+              />
             </div>
           ))}
         </div>
-
-        {/* Optional feedback pilihan user */}
-        {selectedType && (
-          <div className="mt-6 text-sm text-green-600 dark:text-green-400">
-            ✅ Anda memilih: <span className="font-semibold">{selectedType}</span>
-          </div>
-        )}
+           {selectedType && (
+                    <div className="mt-4 text-sm text-green-600 dark:text-green-400">
+                        ✅ Anda memilih:{' '}
+                        <span className="font-semibold">{selectedType}</span>
+                    </div>
+                )}
+            
       </div>
     </AppLayout>
   );
 }
+
+
+             

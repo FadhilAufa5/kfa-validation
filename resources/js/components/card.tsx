@@ -51,7 +51,7 @@ export function Card({
               {/* Icon */}
               {Icon && (
                 <div
-                  className={`flex items-center justify-center w-12 h-12 mb-4 rounded-xl 
+                  className={`flex items-center justify-center w-12 h-12 mb-3 rounded-xl
                     bg-gradient-to-br from-blue-100 to-blue-50 dark:from-gray-700 dark:to-gray-600`}
                 >
                   <Icon className={`h-7 w-7 ${color}`} />

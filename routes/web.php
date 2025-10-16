@@ -32,6 +32,7 @@ Route::post('/pembelian/reguler/upload', [PembelianController::class, 'upload'])
 Route::post('/pembelian/reguler/process', [PembelianController::class, 'process'])->name('pembelian.reguler.process');
 Route::get('/pembelian/retur', [PembelianController::class, 'retur'])->name('pembelian.retur');
 Route::get('/pembelian/urgent', [PembelianController::class, 'urgent'])->name('pembelian.urgent');
+Route::get('/pemebelian /{id}', [PembelianController::class, 'show'])->name('pembelian.show');
 
 Route::post('/upload', function (Request $request) {
     $path = $request->file('file')->store('uploads');
