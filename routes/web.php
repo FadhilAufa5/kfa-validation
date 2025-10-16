@@ -26,7 +26,7 @@ Route::get('/pembelian/history', [PembelianController::class, 'history'])->name(
 Route::get('/pembelian/reguler', [PembelianController::class, 'reguler'])->name('pembelian.reguler');
 Route::get('/pembelian/retur', [PembelianController::class, 'retur'])->name('pembelian.retur');
 Route::get('/pembelian/urgent', [PembelianController::class, 'urgent'])->name('pembelian.urgent');
-Route::post('/pembelian/{type}', [PembelianController::class, 'store'])->name('pembelian.store');
+Route::post('/pembelian/upload/{type}', [PembelianController::class, 'store'])->name('pembelian.store');
 
 
 require __DIR__ . '/settings.php';

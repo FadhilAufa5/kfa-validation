@@ -45,7 +45,21 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
-            'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'sidebarOpen' => !$request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+
+            /**
+             * CSRF Token for external requests like FilePond.
+             * This is the fix for the 419 error.
+             */
+            'csrf_token' => csrf_token(),
+
+            /**
+             * Flash messages for displaying success/error alerts after an action.
+             */
+            'flash' => [
+                'success' => fn() => $request->session()->get('success'),
+                'error' => fn() => $request->session()->get('error'),
+            ],
         ];
     }
 }
