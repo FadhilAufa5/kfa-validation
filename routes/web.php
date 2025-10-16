@@ -22,8 +22,12 @@ Route::get('/historypenjualan', [PenjualanController::class, 'history'])->name('
 
 // pemebelian
 Route::get('/pembelian', [PembelianController::class, 'index'])->name('pembelian.index');
-Route::get('/historypembelian', [PembelianController::class, 'history'])->name('pembelian.history');
+Route::get('/pembelian/history', [PembelianController::class, 'history'])->name('pembelian.history');
+Route::get('/pembelian/reguler', [PembelianController::class, 'reguler'])->name('pembelian.reguler');
+Route::get('/pembelian/retur', [PembelianController::class, 'retur'])->name('pembelian.retur');
+Route::get('/pembelian/urgent', [PembelianController::class, 'urgent'])->name('pembelian.urgent');
+Route::post('/pembelian/{type}', [PembelianController::class, 'store'])->name('pembelian.store');
 
 
-require __DIR__.'/settings.php';
-require __DIR__.'/auth.php';
+require __DIR__ . '/settings.php';
+require __DIR__ . '/auth.php';
