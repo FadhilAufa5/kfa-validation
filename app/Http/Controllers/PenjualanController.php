@@ -6,13 +6,13 @@ use Illuminate\Http\Request;
 
 class PenjualanController extends Controller
 {
-   
+
     public function index()
     {
-    return Inertia::render('penjualan/index');
+        return Inertia::render('penjualan/index');
     }
 
-    
+
     public function history()
     {
         return Inertia::render('penjualan/history');
@@ -20,6 +20,26 @@ class PenjualanController extends Controller
     public function create()
     {
         //
+    }
+
+    public function reguler()
+    {
+        return Inertia::render('penjualan/reguler');
+    }
+
+    public function ecommerce()
+    {
+        return Inertia::render('penjualan/ecommerce');
+    }
+
+    public function debitur()
+    {
+        return Inertia::render('penjualan/debitur');
+    }
+
+    public function konsi()
+    {
+        return Inertia::render('penjualan/konsi');
     }
 
     /**

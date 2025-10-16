@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Imports\Pembelian\PembelianRegulerImport;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationData;
 use Inertia\Inertia;
-use App\Http\Imports\Pembelian\RegularImport;
-use App\Http\Imports\Pembelian\ReturImport;
-use App\Http\Imports\Pembelian\UrgentImport;
+use Maatwebsite\Excel\Facades\Excel;
 
 use Maatwebsite\Excel\Facades\Excel;
 class PembelianController extends Controller
@@ -86,9 +86,12 @@ class PembelianController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Validation $id)
     {
-        //
+        
+        return Inertia::render('pembelian/show', [
+            'validation' => $id, 
+        ]);
     }
 
     /**
