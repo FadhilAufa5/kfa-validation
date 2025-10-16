@@ -33,5 +33,11 @@ Route::post('/pembelian/reguler/process', [PembelianController::class, 'process'
 Route::get('/pembelian/retur', [PembelianController::class, 'retur'])->name('pembelian.retur');
 Route::get('/pembelian/urgent', [PembelianController::class, 'urgent'])->name('pembelian.urgent');
 
+Route::post('/upload', function (Request $request) {
+    $path = $request->file('file')->store('uploads');
+    return response()->json(['path' => $path]);
+});
+
+
 require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';
