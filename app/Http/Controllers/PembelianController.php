@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Imports\Pembelian\PembelianRegulerImport;
+use App\Models\PembelianRetur;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationData;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 
-use Maatwebsite\Excel\Facades\Excel;
 class PembelianController extends Controller
 {
     /**
@@ -23,6 +22,7 @@ class PembelianController extends Controller
     {
         return Inertia::render('pembelian/history');
     }
+
 
     public function reguler()
     {
@@ -86,35 +86,67 @@ class PembelianController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Validation $id)
+ 
+
+public function show($id)
     {
-        
+      
+        if ($id == '2') {
+            $dummyData = [
+                'fileName' => 'laporan_q3_error.xlsx',
+                'role' => 'Manager',
+                'category' => 'Urgent',
+                'score' => 85.50,
+                'matched' => 1710,
+                'total' => 2000,
+                'discrepancy' => 290,
+                'isValid' => false, 
+            ];
+        } else {
+            $dummyData = [
+                'fileName' => 'beli_reg_sap.csv',
+                'role' => 'Accountant',
+                'category' => 'Reguler',
+                'score' => 100.00,
+                'matched' => 4020,
+                'total' => 4020,
+                'discrepancy' => 0,
+                'isValid' => true, 
+            ];
+        }
+
+       
         return Inertia::render('pembelian/show', [
-            'validation' => $id, 
+            'validationId' => $id,
+            'validationData' => $dummyData,
         ]);
     }
+}
+
+
+
 
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(string $id)
-    {
-        //
-    }
+    // public function edit(string $id)
+    // {
+    //     //
+    // }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
-    {
-        //
-    }
+    // public function update(Request $request, string $id)
+    // {
+    //     //
+    // }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
-    {
-        //
-    }
-}
+    // public function destroy(string $id)
+    // {
+    //     //
+    // }
+

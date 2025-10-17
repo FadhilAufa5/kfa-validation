@@ -1,6 +1,6 @@
 "use client";
 
-import { Link, Head } from "@inertiajs/react";
+import { Link, Head, router } from "@inertiajs/react";
 import { useState, useEffect } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/table";
 import { Folder, Plus, Eye, Search } from "lucide-react";
 import { type BreadcrumbItem } from "@/types";
-
 
 export const CircularScore = ({ score }: { score: string }) => {
   const numericScore = parseInt(score.replace("%", ""), 10);
@@ -36,7 +35,7 @@ export const CircularScore = ({ score }: { score: string }) => {
   return (
     <div className="relative flex items-center justify-center w-12 h-12">
       <svg className="rotate-[-90deg]" width="50" height="50">
-        {/* Background Track - abu abu putus-putus */}
+        {/* Background Track */}
         <circle
           cx="25"
           cy="25"
@@ -46,8 +45,7 @@ export const CircularScore = ({ score }: { score: string }) => {
           strokeDasharray="3 4"
           className="stroke-gray-300 dark:stroke-gray-700"
         />
-
-        {/* Progress Line - biru */}
+        {/* Progress Line */}
         <circle
           cx="25"
           cy="25"
@@ -64,8 +62,6 @@ export const CircularScore = ({ score }: { score: string }) => {
           strokeLinecap="round"
         />
       </svg>
-
-      {/* Center Text */}
       <span
         className={`absolute text-xs font-semibold ${
           isComplete
@@ -82,6 +78,7 @@ export const CircularScore = ({ score }: { score: string }) => {
 export default function ValidationLogPage() {
   const logs = [
     {
+      id: 1,
       user: "Busdev",
       fileType: "CSV",
       fileName: "data_pembelian.csv",
@@ -91,6 +88,7 @@ export default function ValidationLogPage() {
       status: "Invalid",
     },
     {
+      id: 2,
       user: "Legal",
       fileType: "XLSX",
       fileName: "data_pembelian_08_25.xlsx",
@@ -102,7 +100,9 @@ export default function ValidationLogPage() {
   ];
 
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"All" | "Valid" | "Invalid">("All");
+  const [filterStatus, setFilterStatus] = useState<"All" | "Valid" | "Invalid">(
+    "All"
+  );
 
   const filteredLogs = logs.filter(
     (item) =>
@@ -138,7 +138,7 @@ export default function ValidationLogPage() {
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Validation Logs" />
 
-      <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4">
+      <div className="flex flex-col gap-4 p-4 overflow-x-auto">
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
@@ -173,7 +173,7 @@ export default function ValidationLogPage() {
             />
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 justify-center">
             {(["All", "Valid", "Invalid"] as const).map((status) => {
               const isActive = filterStatus === status;
               const colorClass = (() => {
@@ -243,9 +243,9 @@ export default function ValidationLogPage() {
 
               <TableBody>
                 {filteredLogs.length > 0 ? (
-                  filteredLogs.map((item, i) => (
+                  filteredLogs.map((item) => (
                     <TableRow
-                      key={i}
+                      key={item.id}
                       className="even:bg-gray-50 odd:bg-white dark:even:bg-gray-900/30 dark:odd:bg-transparent transition-colors"
                     >
                       <TableCell>{item.user}</TableCell>
@@ -265,19 +265,18 @@ export default function ValidationLogPage() {
                           {item.status}
                         </span>
                       </TableCell>
-                  <TableCell>
-                    <Link >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                      onClick={() => router.visit(`/pembelian/${item.id}`)} // 🔹 Langsung arahkan ke show page
-                    >
-                      <Eye className="w-4 h-4 mr-1" /> Detail
-                    </Button>
-                    </Link>
-                  </TableCell>
 
+                      {/* ✅ Perbaikan di sini */}
+                      <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex items-center text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                        onClick={() => router.visit(`/pembelian/${item.id}`)}
+                      >
+                        <Eye className="w-4 h-4 mr-1" /> Detail
+                      </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
