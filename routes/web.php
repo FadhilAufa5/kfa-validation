@@ -4,6 +4,9 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use App\Http\Controllers\PenjualanController;
 use App\Http\Controllers\PembelianController;
+use App\Http\Controllers\UsersController;
+
+
 
 
 Route::get('/', function () {
@@ -32,12 +35,13 @@ Route::post('/pembelian/reguler/upload', [PembelianController::class, 'upload'])
 Route::post('/pembelian/reguler/process', [PembelianController::class, 'process'])->name('pembelian.reguler.process');
 Route::get('/pembelian/retur', [PembelianController::class, 'retur'])->name('pembelian.retur');
 Route::get('/pembelian/urgent', [PembelianController::class, 'urgent'])->name('pembelian.urgent');
-Route::get('/pemebelian /{id}', [PembelianController::class, 'show'])->name('pembelian.show');
 
-Route::post('/upload', function (Request $request) {
-    $path = $request->file('file')->store('uploads');
-    return response()->json(['path' => $path]);
+Route::get('/pembelian/{id}', function ($id) { return Inertia::render('pembelian/show', ['validationId' => $id,]);
 });
+
+// user management 
+Route::get('/users', [UsersController::class, 'index'])->name('users.index');
+
 
 
 require __DIR__ . '/settings.php';

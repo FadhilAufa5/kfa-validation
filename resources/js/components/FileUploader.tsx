@@ -6,53 +6,50 @@ import FilePondPluginFileValidateSize from 'filepond-plugin-file-validate-size';
 import FilePondPluginFileValidateType from 'filepond-plugin-file-validate-type';
 import 'filepond/dist/filepond.min.css';
 
-
 registerPlugin(FilePondPluginFileValidateType, FilePondPluginFileValidateSize);
 
 interface FileUploaderProps {
-  server?: string;
   onUpdate?: (file: File | null) => void;
-  acceptedTypes?: string[];
-  label?: string;
-  maxFileSize?: string;
 }
 
-export default function FileUploader({
-  server,
-  onUpdate,
-  acceptedTypes = [
-    'text/csv',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    
-  ],
-  label = ' Seret & lepaskan file di sini atau klik untuk memilih',
-  maxFileSize = '50MB',
-}: FileUploaderProps) {
+export default function FileUploader({ onUpdate }: FileUploaderProps) {
   const [files, setFiles] = useState<any[]>([]);
 
   return (
-    <div
-      className="w-full"
-      onClick={(e) => e.stopPropagation()} 
-      onKeyDown={(e) => e.stopPropagation()} 
-    >
+    <div className="w-full">
       <FilePond
         files={files}
         onupdatefiles={(fileItems) => {
           setFiles(fileItems);
-          onUpdate?.(fileItems[0]?.file ?? null);
+          const actualFile = fileItems[0]?.file as File | null;
+          onUpdate?.(actualFile ?? null);
         }}
         allowMultiple={false}
         maxFiles={1}
-        acceptedFileTypes={acceptedTypes}
-        labelIdle={label}
-        allowFileTypeValidation={true}
-        allowFileSizeValidation={true}
-        maxFileSize={maxFileSize}
-        server={server ?? undefined}
-        name="file"
+        acceptedFileTypes={['text/csv']}
+        labelIdle="Drag & lepaskan file CSV di sini atau klik untuk memilih"
+        allowFileTypeValidation
+        allowFileSizeValidation
+        maxFileSize="10MB"
         credits={false}
-        instantUpload={false} 
+        instantUpload={true}
+        server={{
+          process: {
+            url: 'http://kfa-validation-.test/api/upload-csv',
+            method: 'POST',
+            withCredentials: false,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            onload: (response) => {
+              alert('File berhasil diupload dan disimpan di database!');
+              return response;
+            },
+            onerror: (response) => {
+              alert('Upload gagal, cek server!');
+              return response;
+            },
+          },
+        }}
+        name="file"
         className="text-sm"
       />
     </div>
