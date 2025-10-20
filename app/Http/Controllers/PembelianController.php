@@ -51,33 +51,33 @@ class PembelianController extends Controller
         ]);
     }
 
-    public function store(Request $request, $type)
-    {
-        $request->validate([
-            'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-        ]);
+    // public function store(Request $request, $type)
+    // {
+    //     $request->validate([
+    //         'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
+    //     ]);
 
-        $importMap = [
-            'reguler' => \App\Imports\Pembelian\RegularImport::class,
-            'retur' => \App\Imports\Pembelian\ReturImport::class,
-            'urgent' => \App\Imports\Pembelian\UrgentImport::class,
-        ];
+    //     $importMap = [
+    //         'reguler' => \App\Imports\Pembelian\RegularImport::class,
+    //         'retur' => \App\Imports\Pembelian\ReturImport::class,
+    //         'urgent' => \App\Imports\Pembelian\UrgentImport::class,
+    //     ];
 
-        $key = strtolower($type);
+    //     $key = strtolower($type);
 
-        if (!isset($importMap[$key])) {
-            return back()->with('error', 'Tipe dokumen tidak valid.');
-        }
+    //     if (!isset($importMap[$key])) {
+    //         return back()->with('error', 'Tipe dokumen tidak valid.');
+    //     }
 
-        try {
-            Excel::import(new $importMap[$key], $request->file('document'));
-        } catch (\Throwable $e) {
-            \Log::error('Excel import error', ['message' => $e->getMessage()]);
-            return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
-        }
+    //     try {
+    //         Excel::import(new $importMap[$key], $request->file('document'));
+    //     } catch (\Throwable $e) {
+    //         \Log::error('Excel import error', ['message' => $e->getMessage()]);
+    //         return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
+    //     }
 
-        return back()->with('success', 'Dokumen ' . ucfirst($type) . ' berhasil diimpor!');
-    }
+    //     return back()->with('success', 'Dokumen ' . ucfirst($type) . ' berhasil diimpor!');
+    // }
 
 
     public function storeRetur(Request $request)
@@ -88,11 +88,25 @@ class PembelianController extends Controller
 
         try {
             Excel::import(new PembelianReturImport, $request->file('document'));
+            return back()->with('success', 'Data berhasil diimpor!');
+        } catch (\Maatwebsite\Excel\Validators\ValidationException $e) {
+            // Handle validation errors inside the Excel file
+            $failures = $e->failures();
+            $messages = [];
+
+            foreach ($failures as $failure) {
+                $messages[] = 'Baris ' . $failure->row() . ': ' . implode(', ', $failure->errors());
+            }
+
+            \Log::error('Excel validation error', ['errors' => $messages]);
+
+            return back()->with('error', 'Kesalahan validasi pada file Excel.')->with('failures', $messages);
         } catch (\Throwable $e) {
             \Log::error('Excel import error', ['message' => $e->getMessage()]);
             return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
         }
     }
+
 
     public function storeReguler(Request $request)
     {
