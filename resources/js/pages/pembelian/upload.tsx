@@ -1,7 +1,7 @@
-// resources/js/Pages/pembelian/upload.jsx
+// resources/js/Pages/pembelian/upload.tsx
 
 import AppLayout from '@/layouts/app-layout';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { route } from 'ziggy-js';
 
 // ShadCN UI Components
@@ -31,21 +31,7 @@ export default function UploadPage({ document_type }) {
     const { flash, csrf_token } = usePage().props;
 
     // Dynamically generate the correct upload URL based on the document type
-    const uploadUrl = route('pembelian.store', {
-        type: document_type.toLowerCase(),
-    });
-
-    // An efficient way to reload page data without a full browser refresh
-    const handleProcessFile = (error, file) => {
-        if (error) {
-            console.error('Upload error:', error);
-        } else {
-            console.log('Upload success! File info:', file);
-            setTimeout(() => {
-                router.reload({ only: ['flash'] });
-            }, 1000);
-        }
-    };
+    const uploadUrl = route('pembelian.store-' + document_type.toLowerCase());
 
     return (
         <AppLayout>
@@ -113,7 +99,6 @@ export default function UploadPage({ document_type }) {
                                     'X-CSRF-TOKEN': csrf_token, // Security is important
                                 },
                             }}
-                            onprocessfile={handleProcessFile}
                         />
                     </CardContent>
                 </Card>

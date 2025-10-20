@@ -35,9 +35,15 @@ Route::post('/pembelian/reguler/upload', [PembelianController::class, 'upload'])
 Route::post('/pembelian/reguler/process', [PembelianController::class, 'process'])->name('pembelian.reguler.process');
 Route::get('/pembelian/retur', [PembelianController::class, 'retur'])->name('pembelian.retur');
 Route::get('/pembelian/urgent', [PembelianController::class, 'urgent'])->name('pembelian.urgent');
+Route::post('/pembelian/store/{type}', [PembelianController::class, 'store'])->name('pembelian.store');
 
-Route::get('/pembelian/{id}', function ($id) { return Inertia::render('pembelian/show', ['validationId' => $id,]);
-});
+Route::post('/pembelian/store-reguler', [PembelianController::class, 'storeReguler'])->name('pembelian.store-reguler');
+Route::post('/pembelian/store-retur', [PembelianController::class, 'storeRetur'])->name('pembelian.store-retur');
+Route::post('/pembelian/store-urgent', [PembelianController::class, 'storeUrgent'])->name('pembelian.store-urgent');
+
+// Route::get('/pembelian/{id}', function ($id) {
+//     return Inertia::render('pembelian/show', ['validationId' => $id,]);
+// });
 
 // user management 
 Route::get('/users', [UsersController::class, 'index'])->name('users.index');

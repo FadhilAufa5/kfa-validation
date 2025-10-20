@@ -7,6 +7,9 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationData;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
+use App\Imports\Pembelian\PembelianRegulerImport;
+use App\Imports\Pembelian\PembelianReturImport;
+use App\Imports\Pembelian\PembelianUrgentImport;
 
 class PembelianController extends Controller
 {
@@ -55,9 +58,9 @@ class PembelianController extends Controller
         ]);
 
         $importMap = [
-            'reguler' => \App\Http\Imports\Pembelian\RegularImport::class,
-            'retur' => \App\Http\Imports\Pembelian\ReturImport::class,
-            'urgent' => \App\Http\Imports\Pembelian\UrgentImport::class,
+            'reguler' => \App\Imports\Pembelian\RegularImport::class,
+            'retur' => \App\Imports\Pembelian\ReturImport::class,
+            'urgent' => \App\Imports\Pembelian\UrgentImport::class,
         ];
 
         $key = strtolower($type);
@@ -77,6 +80,53 @@ class PembelianController extends Controller
     }
 
 
+    public function storeRetur(Request $request)
+    {
+        $request->validate([
+            'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
+        ]);
+
+        try {
+            Excel::import(new PembelianReturImport, $request->file('document'));
+        } catch (\Throwable $e) {
+            \Log::error('Excel import error', ['message' => $e->getMessage()]);
+            return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
+        }
+    }
+
+    public function storeReguler(Request $request)
+    {
+        $request->validate([
+            'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
+        ]);
+
+        try {
+            Excel::import(new PembelianRegulerImport, $request->file('document'));
+        } catch (\Throwable $e) {
+            \Log::error('Excel import error', ['message' => $e->getMessage()]);
+            return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
+        }
+
+        return back()->with('success', 'Dokumen Reguler berhasil diimpor!');
+    }
+
+    public function storeUrgent(Request $request)
+    {
+        $request->validate([
+            'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
+        ]);
+
+        try {
+            Excel::import(new PembelianUrgentImport, $request->file('document'));
+        } catch (\Throwable $e) {
+            \Log::error('Excel import error', ['message' => $e->getMessage()]);
+            return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
+        }
+
+        return back()->with('success', 'Dokumen Urgent berhasil diimpor!');
+    }
+
+
     public function create()
     {
         //
@@ -86,11 +136,11 @@ class PembelianController extends Controller
     /**
      * Display the specified resource.
      */
- 
 
-public function show($id)
+
+    public function show($id)
     {
-      
+
         if ($id == '2') {
             $dummyData = [
                 'fileName' => 'laporan_q3_error.xlsx',
@@ -100,7 +150,7 @@ public function show($id)
                 'matched' => 1710,
                 'total' => 2000,
                 'discrepancy' => 290,
-                'isValid' => false, 
+                'isValid' => false,
             ];
         } else {
             $dummyData = [
@@ -111,11 +161,11 @@ public function show($id)
                 'matched' => 4020,
                 'total' => 4020,
                 'discrepancy' => 0,
-                'isValid' => true, 
+                'isValid' => true,
             ];
         }
 
-       
+
         return Inertia::render('pembelian/show', [
             'validationId' => $id,
             'validationData' => $dummyData,
@@ -126,27 +176,27 @@ public function show($id)
 
 
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    // public function edit(string $id)
-    // {
-    //     //
-    // }
+/**
+ * Show the form for editing the specified resource.
+ */
+// public function edit(string $id)
+// {
+//     //
+// }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    // public function update(Request $request, string $id)
-    // {
-    //     //
-    // }
+/**
+ * Update the specified resource in storage.
+ */
+// public function update(Request $request, string $id)
+// {
+//     //
+// }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    // public function destroy(string $id)
-    // {
-    //     //
-    // }
+/**
+ * Remove the specified resource from storage.
+ */
+// public function destroy(string $id)
+// {
+//     //
+// }
 

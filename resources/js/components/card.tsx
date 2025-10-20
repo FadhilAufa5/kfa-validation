@@ -1,192 +1,77 @@
-import { Button, Card as FlowbiteCard } from "flowbite-react";
-import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import FileUploader from "@/components/FileUploader";
+import { Link } from '@inertiajs/react';
+import { Button, Card as FlowbiteCard } from 'flowbite-react';
+import { motion } from 'framer-motion';
+import React from 'react';
 
 interface AppCardProps {
-  title: string;
-  description: string;
-  href?: string;
-  icon?: React.ElementType;
-  color?: string;
+    title: string;
+    description: string;
+    href?: string;
+    icon?: React.ElementType;
+    color?: string;
+    currentSelectedType?: string; // Added to accept selected type from parent
 }
 
 export function Card({
-  title,
-  description,
-  icon: Icon,
-  color = "text-blue-500",
+    title,
+    description,
+    href,
+    icon: Icon,
+    color = 'text-blue-500',
+    currentSelectedType,
 }: AppCardProps) {
-  const [openModal, setOpenModal] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-
-  const handleUpload = () => {
-    if (!uploadedFile) {
-      alert("Pilih file terlebih dahulu!");
-      return;
-    }
-
-    console.log("Uploading file:", uploadedFile.name);
-
-    setTimeout(() => {
-      alert(`File "${uploadedFile.name}" berhasil diupload!`);
-      setOpenModal(false);
-      setUploadedFile(null);
-    }, 1000);
-  };
-
-  return (
-    <>
-      {/* Card utama */}
-      <motion.div
-        whileHover={{ y: -6 }}
-        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      >
-        <FlowbiteCard
-          className="max-w-sm h-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 
-                     shadow-md hover:shadow-xl rounded-2xl transition-all duration-300 cursor-pointer overflow-hidden"
-        >
-          <div className="flex flex-col justify-between h-full">
-            <div>
-              {Icon && (
-                <div
-                  className={`flex items-center justify-center w-12 h-12 mb-3 rounded-xl
-                    bg-gradient-to-br from-blue-100 to-blue-50 dark:from-gray-700 dark:to-gray-600`}
-                >
-                  <Icon className={`h-7 w-7 ${color}`} />
-                </div>
-              )}
-
-              <h5 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100 mb-2">
-                {title}
-              </h5>
-
-              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                {description}
-              </p>
-            </div>
-
-            <Button
-              type="button"
-              className="mt-4 w-fit group bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpenModal(true);
-              }}
-            >
-              <span className="flex items-center">
-                Upload Dokumen
-                <svg
-                  className="-mr-1 ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </span>
-            </Button>
-          </div>
-        </FlowbiteCard>
-      </motion.div>
-
-   
-      <AnimatePresence>
-        {openModal && (
-          <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-          >
+    return (
+        <>
+            {/* Card utama */}
             <motion.div
-              key="modal"
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 30 }}
-              transition={{ type: "spring", stiffness: 200, damping: 18 }}
-              className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 w-[95%] max-w-lg"
+                whileHover={{ y: -6 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
             >
-              {/* Tombol Close */}
-              <button
-                type="button"
-                onClick={() => setOpenModal(false)}
-                
+                <Link href={href || '#'}>
+                    <FlowbiteCard className="h-full max-w-sm cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-md transition-all duration-300 hover:shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                        <div className="flex h-full flex-col justify-between">
+                            <div>
+                                {Icon && (
+                                    <div
+                                        className={`mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-100 to-blue-50 dark:from-gray-700 dark:to-gray-600`}
+                                    >
+                                        <Icon className={`h-7 w-7 ${color}`} />
+                                    </div>
+                                )}
 
-                className="absolute top-3 right-3 inline-flex items-center justify-center 
-                           w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 
-                           text-gray-600 dark:text-gray-300 
-                           hover:bg-gray-200 dark:hover:bg-gray-600 
-                           hover:text-gray-900 dark:hover:text-white 
-                           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 
-                           transition-all"
-                aria-label="Close modal"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
+                                <h5 className="mb-2 text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                                    {title}
+                                </h5>
 
-              {/* Header Modal */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Upload Dokumen
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Pilih atau drag file ke area di bawah ini. Hanya CSV / XLSX (maks 10MB).
-                </p>
-              </div>
+                                <p className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+                                    {description}
+                                </p>
+                            </div>
 
-              {/* FileUploader */}
-             <FileUploader
-              onUpdate={(file) => setUploadedFile(file)}
-              acceptedTypes={[
-                "text/csv",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-              ]}
-              maxFileSize="10MB"
-            />
-
-              {/* Tombol Aksi */}
-              <div className="flex justify-end gap-2 mt-6">
-                <Button
-                  color="gray"
-                  type="button"
-                  onClick={() => setOpenModal(false)}
-                  className="hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-                >
-                  Batal
-                </Button>
-                {/* <Button
-                  type="button"
-                  onClick={handleUpload}
-                  disabled={!uploadedFile}
-                  className="bg-blue-600 hover:bg-blue-700 transition"
-                >
-                  Upload
-                </Button> */}
-              </div>
+                            <Button
+                                type="button"
+                                className="group mt-4 w-fit bg-blue-600 text-white hover:bg-blue-700"
+                            >
+                                <span className="flex items-center">
+                                    Upload Dokumen
+                                    <svg
+                                        className="-mr-1 ml-2 h-4 w-4 transition-transform duration-200 group-hover:translate-x-1"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                    >
+                                        <path
+                                            fillRule="evenodd"
+                                            d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
+                                            clipRule="evenodd"
+                                        />
+                                    </svg>
+                                </span>
+                            </Button>
+                        </div>
+                    </FlowbiteCard>
+                </Link>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
-  );
+        </>
+    );
 }
