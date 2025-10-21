@@ -41,9 +41,24 @@ Route::post('/pembelian/store-reguler', [PembelianController::class, 'storeRegul
 Route::post('/pembelian/store-retur', [PembelianController::class, 'storeRetur'])->name('pembelian.store-retur');
 Route::post('/pembelian/store-urgent', [PembelianController::class, 'storeUrgent'])->name('pembelian.store-urgent');
 
-// Route::get('/pembelian/{id}', function ($id) {
-//     return Inertia::render('pembelian/show', ['validationId' => $id,]);
-// });
+Route::post('/pembelian/save-{type}', [PembelianController::class, 'save'])
+    ->name('pembelian.save');
+
+//Dashboard/Uploads
+Route::get('/dashboard/uploads', [PembelianController::class, 'dashboard'])->name('uploads.dashboard');
+Route::delete('/dashboard/uploads/delete/{filename}', [PembelianController::class, 'delete'])->name('files.delete');
+Route::get('/dashboard/uploads/process/{filename}', [PembelianController::class, 'process'])
+    ->name('files.process');
+
+Route::get('/dashboard/uploads/preview/{filename}', [PembelianController::class, 'preview'])
+    ->name('files.preview');
+
+Route::post('/dashboard/uploads/process-with-header/{filename}', [PembelianController::class, 'processWithHeader'])
+    ->name('files.processWithHeader');
+
+Route::get('/pembelian/{id}', function ($id) {
+    return Inertia::render('pembelian/show', ['validationId' => $id,]);
+});
 
 // user management 
 Route::get('/users', [UsersController::class, 'index'])->name('users.index');

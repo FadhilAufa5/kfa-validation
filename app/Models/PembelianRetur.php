@@ -22,7 +22,6 @@ class PembelianRetur extends Model
      */
     protected $fillable = [
         'bulan',
-        'kode_bm',
         'nama_bm',
         'kode_outlet',
         'nama_outlet',
@@ -32,21 +31,11 @@ class PembelianRetur extends Model
         'nama_obat',
         'kode_kreditur',
         'nama_kreditur',
-        'kode_pabrik',
-        'nama_pabrik',
         'satuan_utuh',
         'isi_kemasan',
         'qty_retur',
         'harga_satuan',
         'jumlah_retur',
-        'kode_dep',
-        'departemen',
-        'kode_group',
-        'group',
-        'kode_category',
-        'category',
-        'kode_sub_kategory',
-        'sub_category',
         'konsinyasi',
     ];
 
@@ -60,6 +49,5 @@ class PembelianRetur extends Model
         'jumlah_retur' => 'integer',
         'qty_retur' => 'integer',
         'konsinyasi' => 'boolean',
-        'sub_category' => 'string',
     ];
 }

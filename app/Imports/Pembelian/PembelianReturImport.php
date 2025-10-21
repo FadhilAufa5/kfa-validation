@@ -8,6 +8,7 @@ use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithBatchInserts;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Maatwebsite\Excel\Concerns\WithUpserts;
 use Maatwebsite\Excel\Concerns\WithValidation;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
@@ -16,9 +17,10 @@ class PembelianReturImport implements
     ToModel,
     WithHeadingRow,
     WithUpserts,
-    WithBatchInserts,   // Performance: Inserts data in batches
+    // WithBatchInserts   // Performance: Inserts data in batches
     WithChunkReading,     // Performance: Reads the spreadsheet in chunks
-    WithValidation        // Robustness: Validates data before creating a model
+    ShouldQueue
+    // WithValidation        // Robustness: Validates data before creating a model
 {
     /**
      * @param array $row
@@ -30,9 +32,7 @@ class PembelianReturImport implements
         // This method is now cleaner, focusing only on mapping the data.
         // Data transformation logic is handled separately for clarity.
         return new PembelianRetur([
-            // String and Code fields (direct mapping is fine)
             'bulan' => $row['bulan'],
-            'kode_bm' => $row['kode_bm'],
             'nama_bm' => $row['nama_bm'],
             'kode_outlet' => $row['kode_outlet'],
             'nama_outlet' => $row['nama_outlet'],
@@ -42,21 +42,11 @@ class PembelianReturImport implements
             'nama_obat' => $row['nama_obat'],
             'kode_kreditur' => $row['kode_kreditur'],
             'nama_kreditur' => $row['nama_kreditur'],
-            'kode_pabrik' => $row['kode_pabrik'],
-            'nama_pabrik' => $row['nama_pabrik'],
             'satuan_utuh' => $row['satuan_utuh'],
             'isi_kemasan' => $row['isi_kemasan_utuh'],
             'qty_retur' => $row['qty_retur'],
-            'harga_satuan' => (int) $row['harga_satuan'],
-            'jumlah_retur' => (int) $row['jumlah_retur'],
-            'kode_dep' => $row['kode_dep'],
-            'departemen' => $row['departemen'],
-            'kode_group' => $row['kode_group'],
-            'group' => $row['group'],
-            'kode_category' => $row['kode_category'],
-            'category' => $row['category'],
-            'kode_sub_kategory' => $row['kode_sub_kategory'],
-            'sub_category' => $row['sub_category'] ?? null,
+            'harga_satuan' => $row['harga_satuan'],
+            'jumlah_retur' => $row['jumlah_retur'],
 
             // Transformed Boolean field
             'konsinyasi' => filter_var($row['konsinyasi'], FILTER_VALIDATE_BOOLEAN),
@@ -76,43 +66,48 @@ class PembelianReturImport implements
      * PERFORMANCE: Define the batch size for inserts.
      * This will group X model creations into a single INSERT query.
      */
-    public function batchSize(): int
-    {
-        return 1000; // Adjust based on your server's memory
-    }
+    // public function batchSize(): int
+    // {
+    //     return 1000; // Adjust based on your server's memory
+    // }
 
     /**
      * PERFORMANCE: Define the chunk size for reading.
      * This will read the spreadsheet in chunks of X rows, reducing memory usage.
      */
+    public function headingRow(): int
+    {
+        return 1;
+    }
+
     public function chunkSize(): int
     {
-        return 1000; // Adjust based on your server's memory
+        return 1000;
     }
 
     /**
      * ROBUSTNESS: Define validation rules for each row.
      * If a row fails, it will be skipped, and the error can be caught.
      */
-    public function rules(): array
-    {
-        return [
-            // Example rules (adjust to your needs)
-            'nomor_retur' => 'required|string|max:255',
-            // 'kode_obat' => 'required|string|max:50',
-            // 'nama_obat' => 'required|string|max:255',
-            // 'qty' => 'required|integer',
-            // 'harga_beli' => 'required|numeric',
-            // 'nilai_retur' => 'required|numeric',
-            // 'tanggal_retur' => 'required', // Can be 'date' if you ensure the format
+    // public function rules(): array
+    // {
+    //     return [
+    //         // Example rules (adjust to your needs)
+    //         'nomor_retur' => 'required|string|max:255',
+    //         // 'kode_obat' => 'required|string|max:50',
+    //         // 'nama_obat' => 'required|string|max:255',
+    //         // 'qty' => 'required|integer',
+    //         // 'harga_beli' => 'required|numeric',
+    //         // 'nilai_retur' => 'required|numeric',
+    //         // 'tanggal_retur' => 'required', // Can be 'date' if you ensure the format
 
-            // Allow other fields to be nullable
-            '*.bulan' => 'nullable|numeric',
-            '*.kode_bm' => 'nullable|numeric',
-            '*.jumlah_retur' => 'nullable|numeric',
-            // ... add rules for other fields if needed
-        ];
-    }
+    //         // Allow other fields to be nullable
+    //         '*.bulan' => 'nullable|numeric',
+    //         '*.kode_bm' => 'nullable|numeric',
+    //         '*.jumlah_retur' => 'nullable|numeric',
+    //         // ... add rules for other fields if needed
+    //     ];
+    // }
 
     /**
      * Helper function to robustly transform Excel dates.

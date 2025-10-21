@@ -1,9 +1,3 @@
-import AppLayout from '@/layouts/app-layout';
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import React, { useEffect } from 'react'; // ✅ Import useEffect
-import { route } from 'ziggy-js';
-
-// ShadCN UI Components
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,11 +10,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-
-// Icons
+import AppLayout from '@/layouts/app-layout';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CircleCheck, TriangleAlert } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { route } from 'ziggy-js';
 
-// Define prop types for Inertia and component
 interface UploadPageProps {
     document_type: string;
 }
@@ -33,51 +28,54 @@ interface PageProps {
 }
 
 export default function UploadPage({ document_type }: UploadPageProps) {
-    // Get shared data from Inertia, including flash messages
     const { flash } = usePage<PageProps>().props;
 
-    // Dynamically generate the correct upload URL based on the document type
     const uploadUrl = route(`pembelian.store-${document_type.toLowerCase()}`);
+    const saveUrl = route('pembelian.save', {
+        type: document_type.toLowerCase(),
+    });
 
-    // Set up the form using Inertia's useForm hook
     const { data, setData, post, processing, progress, errors, reset } =
-        useForm<{
-            document: File | null;
-        }>({
+        useForm<{ document: File | null }>({
             document: null,
         });
 
-    // ✅ Log validation errors whenever the `errors` object changes
     useEffect(() => {
-        if (Object.keys(errors).length > 0) {
+        if (Object.keys(errors).length > 0)
             console.warn('[Validation Errors]', errors);
-        }
     }, [errors]);
 
-    // ✅ Log flash messages whenever they appear
     useEffect(() => {
-        if (flash?.error) {
-            console.error('[Flash Error]', flash.error);
-        }
-        if (flash?.success) {
-            console.info('[Flash Success]', flash.success);
-        }
+        if (flash?.error) console.error('[Flash Error]', flash.error);
+        if (flash?.success) console.info('[Flash Success]', flash.success);
     }, [flash]);
 
-    // Handle form submission
     function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault();
         post(uploadUrl, {
             onSuccess: () => {
-                // Also good to log success for debugging
-                console.log(
-                    '✅ Form submitted successfully. Resetting file input.',
-                );
+                console.log('✅ Uploaded successfully');
                 reset('document');
             },
-            // ✅ Add onError callback to log any submission failures
             onError: (errorPayload) => {
-                console.error('❌ Form submission failed.', errorPayload);
+                console.error('❌ Upload failed', errorPayload);
+            },
+        });
+    }
+
+    function handleSaveToStorage() {
+        if (!data.document) {
+            alert('Silakan pilih file terlebih dahulu.');
+            return;
+        }
+
+        post(saveUrl, {
+            onSuccess: () => {
+                console.log('✅ File disimpan di storage/app');
+                reset('document');
+            },
+            onError: (errorPayload) => {
+                console.error('❌ Gagal menyimpan file', errorPayload);
             },
         });
     }
@@ -109,7 +107,6 @@ export default function UploadPage({ document_type }: UploadPageProps) {
                     </CardHeader>
 
                     <CardContent>
-                        {/* --- Flash Messages Section --- */}
                         {flash?.success && (
                             <Alert className="mb-6 border-green-500 text-green-700 dark:border-green-600 dark:text-green-300">
                                 <CircleCheck className="h-4 w-4" />
@@ -130,14 +127,13 @@ export default function UploadPage({ document_type }: UploadPageProps) {
                             </Alert>
                         )}
 
-                        {/* --- Upload Form Section --- */}
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <div className="grid w-full items-center gap-1.5">
                                 <Label htmlFor="document">Pilih File</Label>
                                 <Input
                                     id="document"
                                     type="file"
-                                    accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                                    accept=".xlsx,.xls,.csv"
                                     onChange={(e) =>
                                         setData(
                                             'document',
@@ -145,11 +141,7 @@ export default function UploadPage({ document_type }: UploadPageProps) {
                                         )
                                     }
                                     disabled={processing}
-                                    className="file:text-foreground"
                                 />
-                                <p className="text-sm text-muted-foreground">
-                                    Hanya menerima file .xlsx, .xls, atau .csv.
-                                </p>
                                 {errors.document && (
                                     <p className="text-sm text-destructive">
                                         {errors.document}
@@ -157,7 +149,6 @@ export default function UploadPage({ document_type }: UploadPageProps) {
                                 )}
                             </div>
 
-                            {/* Optional: Show upload progress */}
                             {progress && (
                                 <Progress
                                     value={progress.percentage}
@@ -165,7 +156,16 @@ export default function UploadPage({ document_type }: UploadPageProps) {
                                 />
                             )}
 
-                            <div className="flex justify-end">
+                            <div className="flex justify-end gap-3">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleSaveToStorage}
+                                    disabled={processing || !data.document}
+                                >
+                                    Simpan ke Storage
+                                </Button>
+
                                 <Button
                                     type="submit"
                                     disabled={processing || !data.document}
