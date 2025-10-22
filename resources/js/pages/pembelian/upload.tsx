@@ -10,10 +10,27 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { ArrowLeft, CircleCheck, TriangleAlert } from 'lucide-react';
-import React, { useEffect } from 'react';
+import axios from 'axios';
+import {
+    ArrowLeft,
+    CircleCheck,
+    Loader2,
+    RotateCcw,
+    Sheet,
+    TriangleAlert,
+    UploadCloud,
+} from 'lucide-react';
+import { useState } from 'react';
 import { route } from 'ziggy-js';
 
 interface UploadPageProps {
@@ -27,74 +44,154 @@ interface PageProps {
     };
 }
 
+// Define the structure of our component's state for clarity
+type UploadStep = 'initial' | 'previewing' | 'processing' | 'finished';
+
 export default function UploadPage({ document_type }: UploadPageProps) {
     const { flash } = usePage<PageProps>().props;
 
-    const uploadUrl = route(`pembelian.store-${document_type.toLowerCase()}`);
     const saveUrl = route('pembelian.save', {
         type: document_type.toLowerCase(),
     });
 
-    const { data, setData, post, processing, progress, errors, reset } =
-        useForm<{ document: File | null }>({
-            document: null,
-        });
+    const { data, setData, reset } = useForm<{ document: File | null }>({
+        document: null,
+    });
 
-    useEffect(() => {
-        if (Object.keys(errors).length > 0)
-            console.warn('[Validation Errors]', errors);
-    }, [errors]);
+    const [step, setStep] = useState<UploadStep>('initial');
+    const [isLoading, setIsLoading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [apiError, setApiError] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (flash?.error) console.error('[Flash Error]', flash.error);
-        if (flash?.success) console.info('[Flash Success]', flash.success);
-    }, [flash]);
+    const [uploadedFilename, setUploadedFilename] = useState<string | null>(
+        null,
+    );
+    const [previewData, setPreviewData] = useState<string[][] | null>(null);
+    const [headerRow, setHeaderRow] = useState<number>(1);
+    const [processedResult, setProcessedResult] = useState<{
+        data_count: number;
+    } | null>(null);
 
-    function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-        e.preventDefault();
-        post(uploadUrl, {
-            onSuccess: () => {
-                console.log('✅ Uploaded successfully');
-                reset('document');
-            },
-            onError: (errorPayload) => {
-                console.error('❌ Upload failed', errorPayload);
-            },
-        });
-    }
+    const handleReset = () => {
+        reset('document');
+        setStep('initial');
+        setIsLoading(false);
+        setUploadProgress(0);
+        setApiError(null);
+        setUploadedFilename(null);
+        setPreviewData(null);
+        setHeaderRow(1);
+        setProcessedResult(null);
+    };
 
-    function handleSaveToStorage() {
+    /**
+     * Step 1: Upload the file to temporary storage and fetch a preview.
+     */
+    async function handleUploadAndPreview() {
         if (!data.document) {
-            alert('Silakan pilih file terlebih dahulu.');
+            setApiError('Silakan pilih file terlebih dahulu.');
             return;
         }
 
-        post(saveUrl, {
-            onSuccess: () => {
-                console.log('✅ File disimpan di storage/app');
-                reset('document');
-            },
-            onError: (errorPayload) => {
-                console.error('❌ Gagal menyimpan file', errorPayload);
-            },
-        });
+        setIsLoading(true);
+        setApiError(null);
+        setStep('previewing');
+        setUploadProgress(0);
+
+        const formData = new FormData();
+        formData.append('document', data.document);
+
+        try {
+            const uploadResponse = await axios.post(saveUrl, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round(
+                        (progressEvent.loaded * 100) /
+                            (progressEvent.total || 1),
+                    );
+                    setUploadProgress(percentCompleted);
+                },
+            });
+
+            const { filename } = uploadResponse.data;
+            if (!filename) {
+                throw new Error('Server tidak mengembalikan nama file.');
+            }
+            setUploadedFilename(filename);
+
+            const previewUrl = route('pembelian.preview', { filename });
+            const previewResponse = await axios.get(previewUrl);
+            setPreviewData(previewResponse.data.preview);
+        } catch (error: any) {
+            console.error('❌ Upload or Preview failed', error);
+            const errorMessage =
+                error.response?.data?.error ||
+                error.message ||
+                'Terjadi kesalahan yang tidak diketahui.';
+            setApiError(errorMessage);
+            setStep('initial');
+        } finally {
+            setIsLoading(false);
+        }
     }
+
+    /**
+     * Step 2: Process the file using the selected header row.
+     */
+    async function handleProcessFile() {
+        if (!uploadedFilename) {
+            setApiError('Tidak ada file yang diunggah untuk diproses.');
+            return;
+        }
+
+        setIsLoading(true);
+        setApiError(null);
+        setStep('processing');
+
+        try {
+            const processUrl = route('pembelian.processWithHeader', {
+                filename: uploadedFilename,
+            });
+            const response = await axios.post(processUrl, {
+                // Controller expects 1-based index from toArray(null, true, true, true)
+                // which matches our `headerRow` state.
+                headerRow: headerRow,
+            });
+
+            // ✨ ADDED: Log the processed data to the console for verification.
+            console.log('✅ Processed Data:', response.data.data);
+
+            setProcessedResult({ data_count: response.data.data_count });
+            setStep('finished');
+        } catch (error: any) {
+            console.error('❌ Processing failed', error);
+            const errorMessage =
+                error.response?.data?.error ||
+                'Gagal memproses file. Pastikan baris header yang dipilih benar.';
+            setApiError(errorMessage);
+            setStep('previewing');
+        } finally {
+            setIsLoading(false);
+        }
+    }
+    console.log(uploadedFilename);
 
     return (
         <AppLayout>
             <Head title={`Upload Dokumen ${document_type}`} />
 
             <div className="container mx-auto px-4 py-10">
-                <Card className="mx-auto max-w-3xl">
+                <Card className="mx-auto max-w-4xl">
                     <CardHeader>
+                        {/* ... (no changes in CardHeader) ... */}
                         <div className="mb-2 flex items-start justify-between">
                             <div>
                                 <CardTitle className="text-2xl">
                                     Upload Dokumen Pembelian {document_type}
                                 </CardTitle>
                                 <CardDescription className="mt-1">
-                                    Unggah file Excel (.xlsx, .xls) atau CSV
-                                    yang sesuai.
+                                    Unggah, pratinjau, dan proses file Anda
+                                    dalam beberapa langkah mudah.
                                 </CardDescription>
                             </div>
                             <Link href={route('pembelian.index')}>
@@ -107,17 +204,15 @@ export default function UploadPage({ document_type }: UploadPageProps) {
                     </CardHeader>
 
                     <CardContent>
-                        {flash?.success && (
-                            <Alert className="mb-6 border-green-500 text-green-700 dark:border-green-600 dark:text-green-300">
-                                <CircleCheck className="h-4 w-4" />
-                                <AlertTitle>Berhasil!</AlertTitle>
-                                <AlertDescription>
-                                    {flash.success}
-                                </AlertDescription>
+                        {/* ... (no changes in alerts and initial form) ... */}
+                        {apiError && (
+                            <Alert variant="destructive" className="mb-6">
+                                <TriangleAlert className="h-4 w-4" />
+                                <AlertTitle>Terjadi Kesalahan</AlertTitle>
+                                <AlertDescription>{apiError}</AlertDescription>
                             </Alert>
                         )}
-
-                        {flash?.error && (
+                        {flash?.error && !apiError && (
                             <Alert variant="destructive" className="mb-6">
                                 <TriangleAlert className="h-4 w-4" />
                                 <AlertTitle>Terjadi Kesalahan</AlertTitle>
@@ -127,55 +222,201 @@ export default function UploadPage({ document_type }: UploadPageProps) {
                             </Alert>
                         )}
 
-                        <form onSubmit={handleSubmit} className="space-y-6">
-                            <div className="grid w-full items-center gap-1.5">
-                                <Label htmlFor="document">Pilih File</Label>
-                                <Input
-                                    id="document"
-                                    type="file"
-                                    accept=".xlsx,.xls,.csv"
-                                    onChange={(e) =>
-                                        setData(
-                                            'document',
-                                            e.target.files?.[0] ?? null,
-                                        )
-                                    }
-                                    disabled={processing}
-                                />
-                                {errors.document && (
-                                    <p className="text-sm text-destructive">
-                                        {errors.document}
-                                    </p>
-                                )}
+                        {step === 'initial' && (
+                            <div className="space-y-6">
+                                <div className="grid w-full items-center gap-1.5">
+                                    <Label htmlFor="document">Pilih File</Label>
+                                    <Input
+                                        id="document"
+                                        type="file"
+                                        accept=".xlsx,.xls,.csv"
+                                        onChange={(e) =>
+                                            setData(
+                                                'document',
+                                                e.target.files?.[0] ?? null,
+                                            )
+                                        }
+                                        disabled={isLoading}
+                                    />
+                                </div>
+                                <div className="flex justify-end">
+                                    <Button
+                                        onClick={handleUploadAndPreview}
+                                        disabled={isLoading || !data.document}
+                                    >
+                                        {isLoading ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <UploadCloud className="mr-2 h-4 w-4" />
+                                        )}
+                                        Unggah & Pratinjau
+                                    </Button>
+                                </div>
                             </div>
+                        )}
 
-                            {progress && (
+                        {step === 'previewing' && isLoading && (
+                            <div className="space-y-2">
+                                <p className="text-sm text-muted-foreground">
+                                    Mengunggah file...
+                                </p>
                                 <Progress
-                                    value={progress.percentage}
+                                    value={uploadProgress}
                                     className="w-full"
                                 />
-                            )}
-
-                            <div className="flex justify-end gap-3">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={handleSaveToStorage}
-                                    disabled={processing || !data.document}
-                                >
-                                    Simpan ke Storage
-                                </Button>
-
-                                <Button
-                                    type="submit"
-                                    disabled={processing || !data.document}
-                                >
-                                    {processing
-                                        ? 'Mengunggah...'
-                                        : 'Unggah Dokumen'}
-                                </Button>
                             </div>
-                        </form>
+                        )}
+
+                        {step === 'previewing' && !isLoading && previewData && (
+                            <div className="space-y-6">
+                                <Alert
+                                    variant="default"
+                                    className="border-blue-500"
+                                >
+                                    <Sheet className="h-4 w-4" />
+                                    <AlertTitle>Pratinjau Data</AlertTitle>
+                                    <AlertDescription>
+                                        File <strong>{uploadedFilename}</strong>{' '}
+                                        berhasil diunggah. Klik pada baris di
+                                        bawah untuk memilihnya sebagai header.
+                                    </AlertDescription>
+                                </Alert>
+
+                                <div className="max-h-80 overflow-auto rounded-md border">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="w-16">
+                                                    Baris
+                                                </TableHead>
+                                                {previewData[0]?.map(
+                                                    (_, colIndex) => (
+                                                        <TableHead
+                                                            key={colIndex}
+                                                        >
+                                                            Kolom{' '}
+                                                            {String.fromCharCode(
+                                                                65 + colIndex,
+                                                            )}
+                                                        </TableHead>
+                                                    ),
+                                                )}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {previewData.map(
+                                                (row, rowIndex) => (
+                                                    // ✨ CHANGED: Added onClick, className for interaction and styling
+                                                    <TableRow
+                                                        key={rowIndex}
+                                                        onClick={() =>
+                                                            setHeaderRow(
+                                                                rowIndex + 1,
+                                                            )
+                                                        }
+                                                        className={`cursor-pointer transition-colors hover:bg-muted/50 ${
+                                                            headerRow ===
+                                                            rowIndex + 1
+                                                                ? 'bg-muted'
+                                                                : ''
+                                                        }`}
+                                                    >
+                                                        <TableCell className="font-medium">
+                                                            {rowIndex + 1}
+                                                        </TableCell>
+                                                        {row.map(
+                                                            (
+                                                                cell,
+                                                                cellIndex,
+                                                            ) => (
+                                                                <TableCell
+                                                                    key={
+                                                                        cellIndex
+                                                                    }
+                                                                >
+                                                                    {cell}
+                                                                </TableCell>
+                                                            ),
+                                                        )}
+                                                    </TableRow>
+                                                ),
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    <Label
+                                        htmlFor="header-row"
+                                        className="whitespace-nowrap"
+                                    >
+                                        Baris Header Dipilih:
+                                    </Label>
+                                    <Input
+                                        id="header-row"
+                                        type="number"
+                                        min="1"
+                                        className="w-24"
+                                        value={headerRow}
+                                        onChange={(e) =>
+                                            setHeaderRow(
+                                                parseInt(e.target.value, 10) ||
+                                                    1,
+                                            )
+                                        }
+                                    />
+                                </div>
+
+                                <div className="flex justify-end gap-3">
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleReset}
+                                        disabled={isLoading}
+                                    >
+                                        <RotateCcw className="mr-2 h-4 w-4" />
+                                        Unggah File Lain
+                                    </Button>
+                                    <Button
+                                        onClick={handleProcessFile}
+                                        disabled={isLoading}
+                                    >
+                                        {isLoading ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : null}
+                                        Proses Data
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 3: Finished */}
+                        {step === 'finished' && processedResult && (
+                            // ... (no changes in the 'finished' step) ...
+                            <div className="space-y-6">
+                                <Alert className="border-green-500 text-green-700 dark:border-green-600 dark:text-green-300">
+                                    <CircleCheck className="h-4 w-4" />
+                                    <AlertTitle>Berhasil Diproses!</AlertTitle>
+                                    <AlertDescription>
+                                        File <strong>{uploadedFilename}</strong>{' '}
+                                        telah berhasil diproses. Sebanyak{' '}
+                                        <strong>
+                                            {processedResult.data_count}
+                                        </strong>{' '}
+                                        baris data ditemukan. (Lihat console
+                                        browser untuk detail data).
+                                    </AlertDescription>
+                                </Alert>
+                                <div className="flex justify-end">
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleReset}
+                                    >
+                                        <RotateCcw className="mr-2 h-4 w-4" />
+                                        Unggah File Lain
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>

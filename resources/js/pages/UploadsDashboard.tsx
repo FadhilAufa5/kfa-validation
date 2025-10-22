@@ -71,10 +71,9 @@ export default function UploadsDashboard() {
             return alert('Pilih baris header terlebih dahulu!');
         try {
             const res = await axios.post(
-                route('files.processWithHeader', activeFile),
-                {
-                    headerRow: selectedHeader,
-                },
+    const saveUrl = route('pembelian.save', {
+        type: document_type.toLowerCase(),
+    });
             );
             console.log('✅ Processed file:', res.data);
             setModalOpen(false);

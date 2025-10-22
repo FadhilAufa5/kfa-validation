@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationData;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Config;
 
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
@@ -17,6 +18,7 @@ use App\Imports\Pembelian\PembelianUrgentImport;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use League\Csv\Reader;
 use PhpOffice\PhpSpreadsheet\Writer\Csv;
+use DB;
 
 
 class PembelianController extends Controller
@@ -157,9 +159,11 @@ class PembelianController extends Controller
         $file = $request->file('document');
         $originalName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
         $extension = $file->getClientOriginalExtension();
+        $fullFilename = $originalName . '.' . 'csv';
+        $doc_type = $type;
 
         // Define the base directory for uploads
-        $uploadDir = storage_path('app/private/uploads');
+        $uploadDir = storage_path("app/private/uploads");
 
         // Ensure the uploads directory exists
         if (!file_exists($uploadDir)) {
@@ -176,10 +180,33 @@ class PembelianController extends Controller
             $path = "uploads/{$originalName}.csv";
         } else {
             // Just save the CSV file as-is
-            $path = $file->storeAs('uploads', $file->getClientOriginalName());
+            $path = $file->storeAs("uploads/$doc_type", $file->getClientOriginalName());
         }
 
-        return back()->with('success', "File berhasil disimpan di: {$path}");
+        return response()->json(['filename' => $fullFilename]);
+    }
+
+    public function saveTemp(Request $request)
+    {
+        $request->validate([
+            'document' => 'required|file|mimes:xlsx,xls,csv|max:10240', // Max 10MB
+        ]);
+
+        try {
+            $file = $request->file('document');
+            // Create a unique filename to avoid collisions
+            $filename = uniqid('upload_', true) . '.' . $file->getClientOriginalExtension();
+
+            // Store the file in the 'uploads' disk
+            $file->storeAs('uploads', $filename);
+
+            return response()->json(['filename' => $filename]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Gagal menyimpan file di server: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function dashboard()
@@ -332,68 +359,115 @@ class PembelianController extends Controller
             return response()->json(['error' => 'File tidak ditemukan.'], 404);
         }
 
-        $headerRow = (int) $request->input('headerRow', 0);
+        // Get 1-based header row from user, default to 1 if not provided.
+        $headerRow = (int) $request->input('headerRow', 1);
+        if ($headerRow < 1) {
+            return response()->json(['error' => 'Baris header tidak valid.'], 400);
+        }
+        // ✨ Convert the 1-based user input to a 0-based index for PHP arrays.
+        $headerIndex = $headerRow - 1;
+
         $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
         $fullPath = Storage::path($path);
         $data = [];
 
         try {
+            $allRows = [];
+
             if ($extension === 'csv') {
                 $content = file_get_contents($fullPath);
                 $encoding = mb_detect_encoding($content, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
                 if ($encoding !== 'UTF-8') {
                     $content = mb_convert_encoding($content, 'UTF-8', $encoding);
                 }
-
-                // Create CSV reader
                 $csv = Reader::createFromString($content);
                 $csv->setDelimiter(',');
-
-                // ✅ Read all rows first
+                // This correctly returns a 0-indexed array of arrays.
                 $allRows = iterator_to_array($csv->getRecords());
-
-                // ✅ Extract header & data rows correctly
-                if (!isset($allRows[$headerRow])) {
-                    throw new \Exception("Baris header ($headerRow) tidak ditemukan.");
-                }
-
-                $headers = array_values($allRows[$headerRow]);
-                $dataRows = array_slice($allRows, $headerRow + 1);
-
-                // ✅ Combine headers with the data rows
-                $data = array_map(function ($row) use ($headers) {
-                    // Match headers with row values safely
-                    return array_combine($headers, array_pad(array_values($row), count($headers), null));
-                }, $dataRows);
             } elseif (in_array($extension, ['xlsx', 'xls'])) {
                 $spreadsheet = IOFactory::load($fullPath);
                 $sheet = $spreadsheet->getActiveSheet();
-                $allRows = $sheet->toArray(null, true, true, true);
+                // ✨ CRITICAL CHANGE: Get rows as a simple 0-indexed array.
+                // By setting the last parameter to `false`, we get a standard numeric array,
+                // making the logic identical to the CSV processor.
+                $allRows = $sheet->toArray(null, true, true, false);
 
-                if (!isset($allRows[$headerRow + 1])) {
-                    throw new \Exception("Baris header ($headerRow) tidak ditemukan.");
-                }
-
-                // Convert to 0-based index for array_slice
-                $headers = array_values($allRows[$headerRow]);
-                $dataRows = array_slice($allRows, $headerRow + 1);
-
-                $data = array_map(function ($row) use ($headers) {
-                    return array_combine($headers, array_values($row));
-                }, $dataRows);
+                // Clean up any trailing empty rows that PhpSpreadsheet might return.
+                $allRows = array_filter($allRows, function ($row) {
+                    return !empty(array_filter($row, fn($cell) => $cell !== null && $cell !== ''));
+                });
+                $allRows = array_values($allRows); // Re-index array after filtering
             }
+
+            // --- UNIFIED PROCESSING LOGIC ---
+
+            if (!isset($allRows[$headerIndex])) {
+                throw new \Exception("Baris header #{$headerRow} tidak ditemukan dalam file.");
+            }
+
+            // Get the header row using the correct 0-based index.
+            $headers = $allRows[$headerIndex];
+            // Sanitize headers: trim whitespace and handle potential null values.
+            $headers = array_map(fn($h) => trim($h ?? ''), $headers);
+
+            // Get all rows *after* the header row.
+            $dataRows = array_slice($allRows, $headerIndex + 1);
+
+            $data = array_map(function ($row) use ($headers) {
+                // Ensure the data row has the same number of elements as the header.
+                // Pad with nulls if it's shorter.
+                $paddedRow = array_pad($row, count($headers), null);
+                // Trim if it's longer.
+                $trimmedRow = array_slice($paddedRow, 0, count($headers));
+
+                // This will now combine correctly.
+                return array_combine($headers, $trimmedRow);
+            }, $dataRows);
 
             return response()->json([
                 'filename' => $filename,
-                'header_row' => $headerRow,
+                'header_row' => $headerRow, // Return the original 1-based number for context
                 'data_count' => count($data),
-                'data' => $data,
+                'data' => $data, // This is now correctly formatted!
             ]);
+
         } catch (\Exception $e) {
+            // Provide a more specific error message if array_combine fails
+            if (str_contains($e->getMessage(), 'array_combine')) {
+                return response()->json([
+                    'error' => 'Gagal memproses file: Terjadi ketidakcocokan jumlah kolom antara header dan baris data. Pastikan file terformat dengan benar.',
+                ], 500);
+            }
             return response()->json([
                 'error' => 'Gagal memproses file: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function validateDocument(Request $request)
+    {
+        $type = $request->type;
+        $docType = $request->docType;
+        $fileName = $request->fileName;
+
+        $uploadedPath = storage_path("app/uploads/$fileName");
+        $uploaded = collect(array_map('str_getcsv', file($uploadedPath)))->skip(1);
+
+        $rule = config("document_validation.$type.$docType");
+        [$uploadKey, $dbKey] = $rule['connector'];
+        [$uploadSum, $dbSum] = $rule['sum'];
+        $table = $rule['table'];
+
+        $validation = DB::table($table)->get()->map(fn($r) => (array) $r);
+
+        $invalidRows = $uploaded->filter(function ($row) use ($validation, $uploadKey, $dbKey, $uploadSum, $dbSum) {
+            $match = $validation->firstWhere($dbKey, $row[$uploadKey] ?? null);
+            if (!$match)
+                return true; // connector not found
+            return floatval($row[$uploadSum] ?? 0) != floatval($match[$dbSum] ?? 0); // value mismatch
+        });
+
+        return response()->json(['invalid_rows' => $invalidRows->values()]);
     }
 
     private function utf8ize($data)

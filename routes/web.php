@@ -56,6 +56,16 @@ Route::get('/dashboard/uploads/preview/{filename}', [PembelianController::class,
 Route::post('/dashboard/uploads/process-with-header/{filename}', [PembelianController::class, 'processWithHeader'])
     ->name('files.processWithHeader');
 
+Route::post('/pembelian/save-temp/{type}', [PembelianController::class, 'saveTemp'])
+    ->name('pembelian.save-temp');
+
+Route::get('/pembelian/preview/{filename}', [PembelianController::class, 'preview'])
+    ->name('pembelian.preview');
+
+// Route to process the file with the selected header row (JSON)
+Route::post('/pembelian/process/{filename}', [PembelianController::class, 'processWithHeader'])
+    ->name('pembelian.processWithHeader');
+
 Route::get('/pembelian/{id}', function ($id) {
     return Inertia::render('pembelian/show', ['validationId' => $id,]);
 });
