@@ -44,6 +44,10 @@ Route::post('/pembelian/store-urgent', [PembelianController::class, 'storeUrgent
 Route::post('/pembelian/save-{type}', [PembelianController::class, 'save'])
     ->name('pembelian.save');
 
+// Add route for validation
+Route::post('/pembelian/validate-{type}', [PembelianController::class, 'validateFile'])
+    ->name('pembelian.validateFile');
+
 //Dashboard/Uploads
 Route::get('/dashboard/uploads', [PembelianController::class, 'dashboard'])->name('uploads.dashboard');
 Route::delete('/dashboard/uploads/delete/{filename}', [PembelianController::class, 'delete'])->name('files.delete');

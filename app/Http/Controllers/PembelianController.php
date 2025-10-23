@@ -19,6 +19,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use League\Csv\Reader;
 use PhpOffice\PhpSpreadsheet\Writer\Csv;
 use DB;
+use Illuminate\Support\Facades\Log;
 
 
 class PembelianController extends Controller
@@ -158,56 +159,255 @@ class PembelianController extends Controller
 
         $file = $request->file('document');
         $originalName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        $extension = $file->getClientOriginalExtension();
-        $fullFilename = $originalName . '.' . 'csv';
+        $extension = strtolower($file->getClientOriginalExtension());
         $doc_type = $type;
 
         // Define the base directory for uploads
-        $uploadDir = storage_path("app/private/uploads");
-
-        // Ensure the uploads directory exists
+        $uploadDir = storage_path("app/private/uploads/{$doc_type}");
         if (!file_exists($uploadDir)) {
             mkdir($uploadDir, 0755, true);
         }
 
         $csvPath = "{$uploadDir}/{$originalName}.csv";
 
-        if (in_array(strtolower($extension), ['xls', 'xlsx'])) {
-            // Convert Excel to CSV
-            $spreadsheet = IOFactory::load($file->getRealPath());
+        if (in_array($extension, ['xls', 'xlsx'])) {
+            // Load spreadsheet with data type preservation
+            $reader = IOFactory::createReaderForFile($file->getRealPath());
+            $reader->setReadDataOnly(false);
+            $spreadsheet = $reader->load($file->getRealPath());
+
+            // Write to CSV preserving numeric and string values
             $writer = new Csv($spreadsheet);
+            $writer->setDelimiter(',');
+            $writer->setEnclosure('"');
+            $writer->setLineEnding("\r\n");
+            $writer->setSheetIndex(0);
+            $writer->setUseBOM(true); // Helps for UTF-8 safety
             $writer->save($csvPath);
-            $path = "uploads/{$originalName}.csv";
+
+            $path = "uploads/{$doc_type}/{$originalName}.csv";
         } else {
-            // Just save the CSV file as-is
-            $path = $file->storeAs("uploads/$doc_type", $file->getClientOriginalName());
+            // Move CSV as-is
+            $path = $file->storeAs("uploads/{$doc_type}", "{$originalName}.csv");
         }
 
-        return response()->json(['filename' => $fullFilename]);
+        return response()->json(['filename' => "{$originalName}.csv"]);
     }
 
-    public function saveTemp(Request $request)
+    public function validateFile(Request $request, $type)
     {
+        $startTime = microtime(true);
+        Log::info('Starting validation process', ['type' => $type, 'filename' => $request->input('filename')]);
+
         $request->validate([
-            'document' => 'required|file|mimes:xlsx,xls,csv|max:10240', // Max 10MB
+            'filename' => 'required|string',
         ]);
 
-        try {
-            $file = $request->file('document');
-            // Create a unique filename to avoid collisions
-            $filename = uniqid('upload_', true) . '.' . $file->getClientOriginalExtension();
+        $filename = $request->input('filename');
+        $path = "uploads/{$filename}";
 
-            // Store the file in the 'uploads' disk
-            $file->storeAs('uploads', $filename);
-
-            return response()->json(['filename' => $filename]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Gagal menyimpan file di server: ' . $e->getMessage(),
-            ], 500);
+        if (!Storage::exists($path)) {
+            Log::warning('File not found for validation', ['path' => $path]);
+            return response()->json(['error' => 'File tidak ditemukan.'], 404);
         }
+
+        // 🔹 Load config for this document type
+        $config = Config::get('pembelian_validation.' . strtolower($type));
+        if (!$config) {
+            Log::error('Invalid document type for validation', ['type' => $type]);
+            return response()->json(['error' => 'Tipe dokumen tidak valid.'], 400);
+        }
+
+        $validationDoc = $config['doc_val'];
+        $connector = $config['connector']; // e.g. ['Nomor Retur', 'no_transaksi']
+        $sumFields = $config['sum'];       // e.g. ['jumlah_retur', 'dpp']
+
+        // 🔹 Ensure both connector values exist
+        if (count($connector) < 2) {
+            return response()->json(['error' => 'Konfigurasi connector tidak lengkap.'], 400);
+        }
+
+        $uploadedConnector = $connector[0];
+        $validationConnector = $connector[1];
+        $uploadedSum = $sumFields[0] ?? null;
+        $validationSum = $sumFields[1] ?? null;
+
+        Log::info('Validation configuration loaded', [
+            'validationDoc' => $validationDoc,
+            'uploadedConnector' => $uploadedConnector,
+            'validationConnector' => $validationConnector,
+            'uploadedSum' => $uploadedSum,
+            'validationSum' => $validationSum,
+        ]);
+
+        // 🔹 Load validation (source) CSV
+        $validationPath = "validation/{$validationDoc}.csv";
+        if (!Storage::exists($validationPath)) {
+            Log::error('Validation document not found', ['path' => $validationPath]);
+            return response()->json(['error' => "Dokumen validasi {$validationDoc}.csv tidak ditemukan."], 404);
+        }
+
+        $validationContent = Storage::get($validationPath);
+        $encoding = mb_detect_encoding($validationContent, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+        if ($encoding !== 'UTF-8') {
+            $validationContent = mb_convert_encoding($validationContent, 'UTF-8', $encoding);
+        }
+
+        $validationCsv = Reader::createFromString($validationContent);
+        $validationCsv->setDelimiter(',');
+        $validationCsv->setHeaderOffset(0);
+        $validationHeaders = array_map('trim', $validationCsv->getHeader()); // Trim headers to be safe
+        $validationRecords = iterator_to_array($validationCsv->getRecords());
+
+        Log::info('Validation document loaded', ['recordCount' => count($validationRecords), 'headers' => $validationHeaders]);
+
+        // 🔹 Load uploaded file
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $fullPath = Storage::path($path);
+        $data = [];
+        $headers = [];
+
+        Log::info('Loading uploaded file', ['extension' => $extension, 'path' => $fullPath]);
+
+        if (in_array($extension, ['xlsx', 'xls'])) {
+            // FIX 2: Correctly parse Excel files into associative arrays
+            $spreadsheet = IOFactory::load($fullPath);
+            $sheet = $spreadsheet->getActiveSheet();
+            $headerRow = $sheet->rangeToArray('A1:' . $sheet->getHighestColumn() . '1', null, true, true, true)[1];
+            $headers = array_map('trim', $headerRow); // Get headers from the first row
+
+            // Start reading data from the second row
+            foreach ($sheet->getRowIterator(2) as $row) {
+                $rowData = [];
+                $cellIterator = $row->getCellIterator();
+                $cellIterator->setIterateOnlyExistingCells(false); // Iterate all cells, even if empty
+
+                foreach ($cellIterator as $index => $cell) {
+                    $headerName = $headers[$index] ?? null;
+                    if ($headerName) {
+                        $rowData[$headerName] = $cell->getValue();
+                    }
+                }
+                // Only add non-empty rows
+                if (count(array_filter($rowData))) {
+                    $data[] = $rowData;
+                }
+            }
+
+        } elseif ($extension === 'csv') {
+            $content = file_get_contents($fullPath);
+            $encoding = mb_detect_encoding($content, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+            if ($encoding !== 'UTF-8') {
+                $content = mb_convert_encoding($content, 'UTF-8', $encoding);
+            }
+
+            $csv = Reader::createFromString($content);
+            $csv->setDelimiter(',');
+            $csv->setHeaderOffset(0);
+            $headers = array_map('trim', $csv->getHeader()); // Trim headers to be safe
+            $data = iterator_to_array($csv->getRecords());
+
+        } else {
+            Log::error('Unsupported file format', ['extension' => $extension]);
+            return response()->json(['error' => 'Format file tidak didukung.'], 400);
+        }
+
+        if (empty($data)) {
+            Log::error('Uploaded file has no data', ['filename' => $filename]);
+            return response()->json(['error' => 'File tidak memiliki data.'], 400);
+        }
+
+        Log::info('Uploaded file loaded', ['rowCount' => count($data), 'headers' => $headers]);
+
+        // 🔹 Validate required columns
+        if (!in_array($uploadedConnector, $headers)) {
+            Log::error('Uploaded connector missing', ['column' => $uploadedConnector, 'availableHeaders' => $headers]);
+            return response()->json(['error' => "Kolom '{$uploadedConnector}' tidak ditemukan dalam file upload."], 400);
+        }
+
+        if (!in_array($validationConnector, $validationHeaders)) {
+            Log::error('Validation connector missing', ['column' => $validationConnector, 'availableHeaders' => $validationHeaders]);
+            return response()->json(['error' => "Kolom '{$validationConnector}' tidak ditemukan dalam file validasi."], 400);
+        }
+
+        if ($uploadedSum && !in_array($uploadedSum, $headers)) {
+            Log::error('Uploaded sum field missing', ['column' => $uploadedSum, 'availableHeaders' => $headers]);
+            return response()->json(['error' => "Kolom '{$uploadedSum}' tidak ditemukan dalam file upload."], 400);
+        }
+
+        if ($validationSum && !in_array($validationSum, $validationHeaders)) {
+            Log::error('Validation sum field missing', ['column' => $validationSum, 'availableHeaders' => $validationHeaders]);
+            return response()->json(['error' => "Kolom '{$validationSum}' tidak ditemukan dalam file validasi."], 400);
+        }
+
+        // A private helper function would be even cleaner, but this works well.
+        $cleanAndParseFloat = function ($value) {
+            if (!is_string($value)) {
+                return is_numeric($value) ? (float) $value : 0.0;
+            }
+            // FIX 1: More robust number parsing. Removes anything not a digit, dot, or minus sign.
+            // This handles currency symbols (Rp, $), thousand separators (,), etc.
+            return (float) preg_replace('/[^\d.-]/', '', $value);
+        };
+
+        // 🔹 Build lookup maps
+        $validationMap = [];
+        foreach ($validationRecords as $record) {
+            $key = trim($record[$validationConnector] ?? '');
+            if ($key === '')
+                continue; // Skip empty keys
+            $value = $cleanAndParseFloat($record[$validationSum] ?? 0);
+            $validationMap[$key] = ($validationMap[$key] ?? 0) + $value;
+        }
+
+        $uploadedMap = [];
+        foreach ($data as $row) {
+            $key = trim($row[$uploadedConnector] ?? '');
+            if ($key === '')
+                continue; // Skip empty keys
+            $value = $cleanAndParseFloat($row[$uploadedSum] ?? 0);
+            $uploadedMap[$key] = ($uploadedMap[$key] ?? 0) + $value;
+        }
+
+        // 🔹 Compare totals
+        $invalidGroups = [];
+        $invalidRows = [];
+        foreach ($uploadedMap as $key => $uploadedValue) {
+            $validationValue = $validationMap[$key] ?? null;
+            if ($validationValue === null) {
+                $invalidGroups[$key] = [
+                    'error' => 'Key not found in validation data',
+                    'uploaded_total' => $uploadedValue,
+                    'source_total' => 0
+                ];
+                continue;
+            }
+
+            // Using a small epsilon for float comparison is safer
+            if (abs($uploadedValue - $validationValue) > 0.01) {
+                $invalidGroups[$key] = [
+                    'error' => 'Total mismatch between uploaded and source data',
+                    'uploaded_total' => $uploadedValue,
+                    'source_total' => $validationValue
+                ];
+            }
+        }
+
+        // 🔹 Summary and response
+        $executionTime = microtime(true) - $startTime;
+        Log::info('Validation completed', [
+            'invalidGroupCount' => count($invalidGroups),
+            'executionTime' => $executionTime,
+            'status' => count($invalidGroups) > 0 ? 'invalid' : 'valid'
+        ]);
+
+        return response()->json([
+            'status' => count($invalidGroups) > 0 ? 'invalid' : 'valid',
+            'invalid_groups' => $invalidGroups,
+            'invalid_rows' => $invalidRows,
+        ]);
     }
+
 
     public function dashboard()
     {
