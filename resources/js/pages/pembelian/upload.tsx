@@ -19,18 +19,17 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import axios from 'axios';
 import {
     ArrowLeft,
-    CircleCheck,
     Loader2,
     RotateCcw,
     Sheet,
     TriangleAlert,
     UploadCloud,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { route } from 'ziggy-js';
 
 interface UploadPageProps {
@@ -70,9 +69,13 @@ interface ValidationResult {
         total_omset: number;
         error: string;
     }[];
+    validation_id: number;
 }
 
-export default function UploadPage({ document_type, document_category }: UploadPageProps) {
+export default function UploadPage({
+    document_type,
+    document_category,
+}: UploadPageProps) {
     const { flash } = usePage<PageProps>().props;
 
     const saveUrl = route('pembelian.save', {
@@ -101,6 +104,23 @@ export default function UploadPage({ document_type, document_category }: UploadP
     } | null>(null);
     const [validationResult, setValidationResult] =
         useState<ValidationResult | null>(null);
+
+    // Auto-redirect to processed route after validation is complete (for both valid and invalid)
+    useEffect(() => {
+        if (step === 'validation_complete' && validationResult) {
+            // Redirect to validation show page after a short delay to show the result
+            const timer = setTimeout(() => {
+                router.visit(
+                    route('pembelian.show', {
+                        id: validationResult.validation_id,
+                    }),
+                );
+            }, 3000); // 3 seconds delay to show validation result before redirect
+
+            // Cleanup the timer if component unmounts
+            return () => clearTimeout(timer);
+        }
+    }, [step, validationResult]);
 
     const handleReset = () => {
         reset('document');
@@ -469,83 +489,13 @@ export default function UploadPage({ document_type, document_category }: UploadP
                         {/* Step 5: Validation Result */}
                         {step === 'validation_complete' && validationResult && (
                             <div className="space-y-6">
-                                {validationResult.status === 'valid' ? (
-                                    <Alert className="border-green-500 text-green-700 dark:border-green-600 dark:text-green-300">
-                                        <CircleCheck className="h-4 w-4" />
-                                        <AlertTitle>
-                                            Validasi Berhasil!
-                                        </AlertTitle>
-                                        <AlertDescription>
-                                            File{' '}
-                                            <strong>{uploadedFilename}</strong>{' '}
-                                            lolos validasi.
-                                        </AlertDescription>
-                                    </Alert>
-                                ) : (
-                                    <Alert
-                                        variant="destructive"
-                                        className="mb-6"
-                                    >
-                                        <TriangleAlert className="h-4 w-4" />
-                                        <AlertTitle>Validasi Gagal!</AlertTitle>
-                                        <AlertDescription>
-                                            File{' '}
-                                            <strong>{uploadedFilename}</strong>{' '}
-                                            tidak lolos validasi. Ditemukan{' '}
-                                            {
-                                                Object.keys(
-                                                    validationResult.invalid_groups,
-                                                ).length
-                                            }{' '}
-                                            grup data yang tidak valid.
-                                        </AlertDescription>
-                                    </Alert>
-                                )}
-
-                                {/* Show link to validation details in history */}
-                                {validationResult.status === 'invalid' && (
-                                    <div className="space-y-4">
-                                        <Alert
-                                            variant="destructive"
-                                            className="mb-6"
-                                        >
-                                            <TriangleAlert className="h-4 w-4" />
-                                            <AlertTitle>Perhatian</AlertTitle>
-                                            <AlertDescription>
-                                                File <strong>{uploadedFilename}</strong> gagal validasi. 
-                                                Detail validasi dapat dilihat di halaman History Pembelian.
-                                            </AlertDescription>
-                                        </Alert>
-                                        <div className="flex justify-center">
-                                            <Link href="/pembelian/history">
-                                                <Button>
-                                                    Lihat History Validasi
-                                                </Button>
-                                            </Link>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div className="flex justify-between">
-                                    <Button
-                                        variant="outline"
-                                        onClick={handleReset}
-                                    >
-                                        <RotateCcw className="mr-2 h-4 w-4" />
-                                        Kembali
-                                    </Button>
-                                    {validationResult.status === 'invalid' && (
-                                        <Button
-                                            onClick={handleValidateFile}
-                                            disabled={isLoading}
-                                        >
-                                            {isLoading && (
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            )}
-                                            Coba Validasi Lagi
-                                        </Button>
-                                    )}
+                                <div className="flex items-center gap-2">
+                                    <p className="text-sm text-green-600">
+                                        Validasi Selesai... Mengarahkan ke
+                                        dashboard analisis
+                                    </p>
                                 </div>
+                                <Progress value={100} className="w-full" />
                             </div>
                         )}
                     </CardContent>

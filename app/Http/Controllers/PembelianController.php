@@ -388,37 +388,60 @@ class PembelianController extends Controller
                     'source_total' => 0,
                     'discrepancy_value' => $uploadedValue // All uploaded value is discrepancy
                 ];
-            } else if (abs($uploadedValue - $validationValue) > 0.01) {
+            } else if (abs($uploadedValue - $validationValue) > 100.01) { // Changed to allow tolerance of -100 to 100
                 $discrepancy_value = $uploadedValue - $validationValue;
                 $invalidGroups[$key] = [
-                    'discrepancy_category' => 'discrepancy', // Value mismatch
-                    'error' => 'Total mismatch between uploaded and source data',
+                    'discrepancy_category' => 'discrepancy', // Value mismatch beyond tolerance
+                    'error' => 'Total mismatch between uploaded and source data beyond tolerance',
                     'uploaded_total' => $uploadedValue,
                     'source_total' => $validationValue,
                     'discrepancy_value' => $discrepancy_value
                 ];
             }
+            // If the difference is within tolerance (-100 to 100), don't add to invalid groups, treat as matched
         }
 
-        // 🔹 Count mismatched records before grouping (each individual record that belongs to an invalid group)
+        // 🔹 Count mismatched records and track matched records
         $invalidRows = [];
+        $matchedRows = [];
         $mismatchedRecordCount = 0;
-        
+
         foreach ($data as $index => $row) {
             $key = trim($row[$uploadedConnector] ?? '');
             if ($key === '')
                 continue; // Skip empty keys
-            
-            // Check if this row's key belongs to an invalid group
-            if (isset($invalidGroups[$key])) {
+
+            // Find the validation value for this key
+            $validationValue = $validationMap[$key] ?? null;
+            $uploadedValue = $uploadedMapByGroup[$key] ?? 0;
+
+            $isMatched = false;
+            if ($validationValue === null) {
+                // Key not found in validation data
+                $isMatched = false;
+            } else {
+                // Check if the difference is within tolerance
+                $diff = abs($uploadedValue - $validationValue);
+                $isMatched = $diff <= 100.01; // Within tolerance of -100 to 100
+            }
+
+            // If this record belongs to a key that is not matched (invalid), count it as mismatched
+            if (!$isMatched && isset($invalidGroups[$key])) {
                 // This row is part of an invalid group, so count it as mismatched
                 $invalidRows[] = [
                     'row_index' => $index,
                     'key_value' => $key,
-                    'total_omset' => $cleanAndParseFloat($row[$uploadedSum] ?? 0),
                     'error' => $invalidGroups[$key]['error']
                 ];
                 $mismatchedRecordCount++;
+            } else if ($isMatched) {
+                // This row is part of a matched group, track it as matched
+                $matchedRows[] = [
+                    'row_index' => $index,
+                    'key_value' => $key,
+                    'validation_source_total' => $validationValue,
+                    'uploaded_total' => $uploadedValue
+                ];
             }
         }
 
@@ -450,6 +473,7 @@ class PembelianController extends Controller
             'validation_details' => [
                 'invalid_groups' => $invalidGroups,
                 'invalid_rows' => $invalidRows,
+                'matched_rows' => $matchedRows,
             ],
         ]);
 
@@ -457,6 +481,7 @@ class PembelianController extends Controller
             'status' => count($invalidGroups) > 0 ? 'invalid' : 'valid',
             'invalid_groups' => $invalidGroups,
             'invalid_rows' => $invalidRows,
+            'validation_id' => $validationRecord->id, // Return the validation record ID for redirect
         ]);
     }
 

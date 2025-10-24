@@ -29,7 +29,7 @@ Route::get('/penjualan/konsi', [PenjualanController::class, 'konsi'])->name('pen
 
 // pembelian
 Route::get('/pembelian', [PembelianController::class, 'index'])->name('pembelian.index');
-Route::get('/historypembelian', [PembelianController::class, 'history'])->name('pembelian.history');
+Route::get('/pembelian/history', [PembelianController::class, 'history'])->name('pembelian.history');
 Route::get('/pembelian/reguler', [PembelianController::class, 'reguler'])->name('pembelian.reguler');
 Route::post('/pembelian/reguler/upload', [PembelianController::class, 'upload'])->name('pembelian.reguler.upload');
 Route::post('/pembelian/reguler/process', [PembelianController::class, 'process'])->name('pembelian.reguler.process');
