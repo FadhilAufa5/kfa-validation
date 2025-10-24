@@ -437,7 +437,7 @@ class PembelianController extends Controller
         $matchedRecords = $totalRecords - $mismatchedRecords;
         $score = $totalRecords > 0 ? round(($matchedRecords / $totalRecords) * 100, 2) : 100.00;
 
-        \App\Models\Validation::create([
+        $validationRecord = \App\Models\Validation::create([
             'file_name' => $filename,
             'role' => auth()->user()?->role ?? 'unknown', // assuming user is authenticated, fallback to 'unknown'
             'user_id' => auth()->user()?->id ?? null, // assuming user is authenticated, fallback to null
@@ -447,6 +447,10 @@ class PembelianController extends Controller
             'total_records' => $totalRecords,
             'matched_records' => $matchedRecords,
             'mismatched_records' => $mismatchedRecords,
+            'validation_details' => [
+                'invalid_groups' => $invalidGroups,
+                'invalid_rows' => $invalidRows,
+            ],
         ]);
 
         return response()->json([
@@ -762,6 +766,11 @@ class PembelianController extends Controller
             'mismatched' => $validation->mismatched_records,
             'isValid' => $validation->mismatched_records === 0,
         ];
+
+        // Add validation details if they exist
+        if ($validation->validation_details) {
+            $validationData = array_merge($validationData, $validation->validation_details);
+        }
 
 
         return Inertia::render('pembelian/show', [

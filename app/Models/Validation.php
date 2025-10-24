@@ -19,5 +19,10 @@ class Validation extends Model
         'total_records',
         'matched_records',
         'mismatched_records',
+        'validation_details',
+    ];
+
+    protected $casts = [
+        'validation_details' => 'array',
     ];
 }

@@ -4,6 +4,14 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { cn } from '@/lib/utils';
 import { type BreadcrumbItem } from '@/types';
@@ -20,6 +28,14 @@ import {
     XCircle,
 } from 'lucide-react';
 
+interface ValidationGroup {
+    discrepancy_category: string;
+    error: string;
+    uploaded_total: number;
+    source_total: number;
+    discrepancy_value: number;
+}
+
 interface ValidationData {
     fileName: string;
     role: string;
@@ -29,6 +45,9 @@ interface ValidationData {
     total: number;
     mismatched: number;
     isValid: boolean;
+    invalid_groups?: {
+        [key: string]: ValidationGroup;
+    };
 }
 
 type ValidationPageProps = {
@@ -172,6 +191,75 @@ export default function PembelianShow() {
                         ))}
                     </div>
                 </div>
+
+                {/* Validation Details Table - Only show if there are invalid records */}
+                {validationData.invalid_groups && Object.keys(validationData.invalid_groups).length > 0 && (
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold">Grup Data Tidak Valid:</h3>
+                        <div className="rounded-md border">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Kunci</TableHead>
+                                        <TableHead>Kategori Diskrepansi</TableHead>
+                                        <TableHead>Error</TableHead>
+                                        <TableHead>Total Diupload</TableHead>
+                                        <TableHead>Total Sumber</TableHead>
+                                        <TableHead>Nilai Diskrepansi</TableHead>
+                                        <TableHead>Sumber Diskrepansi</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {Object.entries(validationData.invalid_groups).map(
+                                        ([key, group]) => {
+                                            // Determine if discrepancy is from validation or uploaded file
+                                            const isFromValidation = group.source_total > group.uploaded_total && group.discrepancy_value < 0;
+                                            const isFromUploaded = group.uploaded_total > group.source_total && group.discrepancy_value > 0;
+                                            const isKeyNotFound = group.discrepancy_category === 'im_invalid';
+                                            
+                                            let sourceLabel = '';
+                                            if (isKeyNotFound) {
+                                                sourceLabel = 'Tidak Ditemukan di Sumber';
+                                            } else if (isFromUploaded) {
+                                                sourceLabel = 'File Diupload';
+                                            } else if (isFromValidation) {
+                                                sourceLabel = 'File Sumber';
+                                            } else {
+                                                sourceLabel = 'Tidak Diketahui';
+                                            }
+                                            
+                                            return (
+                                                <TableRow key={key}>
+                                                    <TableCell className="font-medium">
+                                                        {key}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {group.discrepancy_category}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {group.error}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {group.uploaded_total}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {group.source_total}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {group.discrepancy_value}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {sourceLabel}
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        }
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                )}
 
                 {/* Footer Alert (Dinamis) */}
                 {validationData.isValid ? (

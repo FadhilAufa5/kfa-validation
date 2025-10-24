@@ -502,165 +502,29 @@ export default function UploadPage({ document_type, document_category }: UploadP
                                     </Alert>
                                 )}
 
-                                {validationResult.status === 'invalid' &&
-                                    Object.keys(validationResult.invalid_groups)
-                                        .length > 0 && (
-                                        <div className="space-y-4">
-                                            <h3 className="text-lg font-semibold">
-                                                Grup Data Tidak Valid:
-                                            </h3>
-                                            <div className="rounded-md border">
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead>
-                                                                Kunci
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Kategori Diskrepansi
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Error
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Total Diupload
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Total Sumber
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Nilai Diskrepansi
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Sumber Diskrepansi
-                                                            </TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {Object.entries(
-                                                            validationResult.invalid_groups,
-                                                        ).map(
-                                                            ([key, group]) => {
-                                                                // Determine if discrepancy is from validation or uploaded file
-                                                                const isFromValidation = group.source_total > group.uploaded_total && group.discrepancy_value < 0;
-                                                                const isFromUploaded = group.uploaded_total > group.source_total && group.discrepancy_value > 0;
-                                                                const isKeyNotFound = group.discrepancy_category === 'im_invalid';
-                                                                
-                                                                let sourceLabel = '';
-                                                                if (isKeyNotFound) {
-                                                                    sourceLabel = 'Tidak Ditemukan di Sumber';
-                                                                } else if (isFromUploaded) {
-                                                                    sourceLabel = 'File Diupload';
-                                                                } else if (isFromValidation) {
-                                                                    sourceLabel = 'File Sumber';
-                                                                } else {
-                                                                    sourceLabel = 'Tidak Diketahui';
-                                                                }
-                                                                
-                                                                return (
-                                                                    <TableRow
-                                                                        key={key}
-                                                                    >
-                                                                        <TableCell className="font-medium">
-                                                                            {key}
-                                                                        </TableCell>
-                                                                        <TableCell>
-                                                                            {
-                                                                                group.discrepancy_category
-                                                                            }
-                                                                        </TableCell>
-                                                                        <TableCell>
-                                                                            {
-                                                                                group.error
-                                                                            }
-                                                                        </TableCell>
-                                                                        <TableCell>
-                                                                            {
-                                                                                group.uploaded_total
-                                                                            }
-                                                                        </TableCell>
-                                                                        <TableCell>
-                                                                            {
-                                                                                group.source_total
-                                                                            }
-                                                                        </TableCell>
-                                                                        <TableCell>
-                                                                            {
-                                                                                group.discrepancy_value
-                                                                            }
-                                                                        </TableCell>
-                                                                        <TableCell>
-                                                                            {sourceLabel}
-                                                                        </TableCell>
-                                                                    </TableRow>
-                                                                );
-                                                            }
-                                                        )}
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
+                                {/* Show link to validation details in history */}
+                                {validationResult.status === 'invalid' && (
+                                    <div className="space-y-4">
+                                        <Alert
+                                            variant="destructive"
+                                            className="mb-6"
+                                        >
+                                            <TriangleAlert className="h-4 w-4" />
+                                            <AlertTitle>Perhatian</AlertTitle>
+                                            <AlertDescription>
+                                                File <strong>{uploadedFilename}</strong> gagal validasi. 
+                                                Detail validasi dapat dilihat di halaman History Pembelian.
+                                            </AlertDescription>
+                                        </Alert>
+                                        <div className="flex justify-center">
+                                            <Link href="/pembelian/history">
+                                                <Button>
+                                                    Lihat History Validasi
+                                                </Button>
+                                            </Link>
                                         </div>
-                                    )}
-
-                                {validationResult.status === 'invalid' &&
-                                    validationResult.invalid_rows.length >
-                                        0 && (
-                                        <div className="space-y-4">
-                                            <h3 className="text-lg font-semibold">
-                                                Baris Tidak Valid:
-                                            </h3>
-                                            <div className="rounded-md border">
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead>
-                                                                Baris
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Kunci
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Total Omset
-                                                            </TableHead>
-                                                            <TableHead>
-                                                                Error
-                                                            </TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {validationResult.invalid_rows.map(
-                                                            (row, index) => (
-                                                                <TableRow
-                                                                    key={index}
-                                                                >
-                                                                    <TableCell>
-                                                                        {
-                                                                            row.row_index
-                                                                        }
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {
-                                                                            row.key_value
-                                                                        }
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {
-                                                                            row.total_omset
-                                                                        }
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {
-                                                                            row.error
-                                                                        }
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ),
-                                                        )}
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
-                                        </div>
-                                    )}
+                                    </div>
+                                )}
 
                                 <div className="flex justify-between">
                                     <Button
