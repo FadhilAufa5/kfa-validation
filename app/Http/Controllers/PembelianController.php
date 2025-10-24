@@ -382,15 +382,20 @@ class PembelianController extends Controller
             $validationValue = $validationMap[$key] ?? null;
             if ($validationValue === null) {
                 $invalidGroups[$key] = [
+                    'discrepancy_category' => 'im_invalid', // Key not found in validation
                     'error' => 'Key not found in validation data',
                     'uploaded_total' => $uploadedValue,
-                    'source_total' => 0
+                    'source_total' => 0,
+                    'discrepancy_value' => $uploadedValue // All uploaded value is discrepancy
                 ];
             } else if (abs($uploadedValue - $validationValue) > 0.01) {
+                $discrepancy_value = $uploadedValue - $validationValue;
                 $invalidGroups[$key] = [
+                    'discrepancy_category' => 'discrepancy', // Value mismatch
                     'error' => 'Total mismatch between uploaded and source data',
                     'uploaded_total' => $uploadedValue,
-                    'source_total' => $validationValue
+                    'source_total' => $validationValue,
+                    'discrepancy_value' => $discrepancy_value
                 ];
             }
         }

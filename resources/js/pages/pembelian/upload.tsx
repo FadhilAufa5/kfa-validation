@@ -57,9 +57,11 @@ interface ValidationResult {
     status: 'valid' | 'invalid';
     invalid_groups: {
         [key: string]: {
+            discrepancy_category: string;
             error: string;
             uploaded_total: number;
             source_total: number;
+            discrepancy_value: number;
         };
     };
     invalid_rows: {
@@ -515,6 +517,9 @@ export default function UploadPage({ document_type, document_category }: UploadP
                                                                 Kunci
                                                             </TableHead>
                                                             <TableHead>
+                                                                Kategori Diskrepansi
+                                                            </TableHead>
+                                                            <TableHead>
                                                                 Error
                                                             </TableHead>
                                                             <TableHead>
@@ -523,36 +528,73 @@ export default function UploadPage({ document_type, document_category }: UploadP
                                                             <TableHead>
                                                                 Total Sumber
                                                             </TableHead>
+                                                            <TableHead>
+                                                                Nilai Diskrepansi
+                                                            </TableHead>
+                                                            <TableHead>
+                                                                Sumber Diskrepansi
+                                                            </TableHead>
                                                         </TableRow>
                                                     </TableHeader>
                                                     <TableBody>
                                                         {Object.entries(
                                                             validationResult.invalid_groups,
                                                         ).map(
-                                                            ([key, group]) => (
-                                                                <TableRow
-                                                                    key={key}
-                                                                >
-                                                                    <TableCell className="font-medium">
-                                                                        {key}
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {
-                                                                            group.error
-                                                                        }
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {
-                                                                            group.uploaded_total
-                                                                        }
-                                                                    </TableCell>
-                                                                    <TableCell>
-                                                                        {
-                                                                            group.source_total
-                                                                        }
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ),
+                                                            ([key, group]) => {
+                                                                // Determine if discrepancy is from validation or uploaded file
+                                                                const isFromValidation = group.source_total > group.uploaded_total && group.discrepancy_value < 0;
+                                                                const isFromUploaded = group.uploaded_total > group.source_total && group.discrepancy_value > 0;
+                                                                const isKeyNotFound = group.discrepancy_category === 'im_invalid';
+                                                                
+                                                                let sourceLabel = '';
+                                                                if (isKeyNotFound) {
+                                                                    sourceLabel = 'Tidak Ditemukan di Sumber';
+                                                                } else if (isFromUploaded) {
+                                                                    sourceLabel = 'File Diupload';
+                                                                } else if (isFromValidation) {
+                                                                    sourceLabel = 'File Sumber';
+                                                                } else {
+                                                                    sourceLabel = 'Tidak Diketahui';
+                                                                }
+                                                                
+                                                                return (
+                                                                    <TableRow
+                                                                        key={key}
+                                                                    >
+                                                                        <TableCell className="font-medium">
+                                                                            {key}
+                                                                        </TableCell>
+                                                                        <TableCell>
+                                                                            {
+                                                                                group.discrepancy_category
+                                                                            }
+                                                                        </TableCell>
+                                                                        <TableCell>
+                                                                            {
+                                                                                group.error
+                                                                            }
+                                                                        </TableCell>
+                                                                        <TableCell>
+                                                                            {
+                                                                                group.uploaded_total
+                                                                            }
+                                                                        </TableCell>
+                                                                        <TableCell>
+                                                                            {
+                                                                                group.source_total
+                                                                            }
+                                                                        </TableCell>
+                                                                        <TableCell>
+                                                                            {
+                                                                                group.discrepancy_value
+                                                                            }
+                                                                        </TableCell>
+                                                                        <TableCell>
+                                                                            {sourceLabel}
+                                                                        </TableCell>
+                                                                    </TableRow>
+                                                                );
+                                                            }
                                                         )}
                                                     </TableBody>
                                                 </Table>
