@@ -70,9 +70,7 @@ Route::get('/pembelian/preview/{filename}', [PembelianController::class, 'previe
 Route::post('/pembelian/process/{filename}', [PembelianController::class, 'processWithHeader'])
     ->name('pembelian.processWithHeader');
 
-Route::get('/pembelian/{id}', function ($id) {
-    return Inertia::render('pembelian/show', ['validationId' => $id,]);
-});
+Route::get('pembelian/{id}', [PembelianController::class, 'show'])->name('pembelian.show');
 
 // user management 
 Route::get('/users', [UsersController::class, 'index'])->name('users.index');

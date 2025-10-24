@@ -40,25 +40,31 @@ class PembelianController extends Controller
 
     public function reguler()
     {
-        $document_type = 'Reguler';
+        $document_type = 'Pembelian';
+        $document_category = 'Reguler';
         return Inertia::render('pembelian/upload', [
             'document_type' => $document_type,
+            'document_category' => $document_category,
         ]);
     }
 
     public function retur()
     {
-        $document_type = 'Retur';
+        $document_type = 'Pembelian';
+        $document_category = 'Retur';
         return Inertia::render('pembelian/upload', [
             'document_type' => $document_type,
+            'document_category' => $document_category,
         ]);
     }
 
     public function urgent()
     {
-        $document_type = 'Urgent';
+        $document_type = 'Pembelian';
+        $document_category = 'Urgent';
         return Inertia::render('pembelian/upload', [
             'document_type' => $document_type,
+            'document_category' => $document_category,
         ]);
     }
 
@@ -91,65 +97,65 @@ class PembelianController extends Controller
     // }
 
 
-    public function storeRetur(Request $request)
-    {
-        $request->validate([
-            'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-        ]);
+    // public function storeRetur(Request $request)
+    // {
+    //     $request->validate([
+    //         'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
+    //     ]);
 
-        try {
-            Excel::import(new PembelianReturImport, $request->file('document'));
-            return back()->with('success', 'Data berhasil diimpor!');
-        } catch (\Maatwebsite\Excel\Validators\ValidationException $e) {
-            // Handle validation errors inside the Excel file
-            $failures = $e->failures();
-            $messages = [];
+    //     try {
+    //         Excel::import(new PembelianReturImport, $request->file('document'));
+    //         return back()->with('success', 'Data berhasil diimpor!');
+    //     } catch (\Maatwebsite\Excel\Validators\ValidationException $e) {
+    //         // Handle validation errors inside the Excel file
+    //         $failures = $e->failures();
+    //         $messages = [];
 
-            foreach ($failures as $failure) {
-                $messages[] = 'Baris ' . $failure->row() . ': ' . implode(', ', $failure->errors());
-            }
+    //         foreach ($failures as $failure) {
+    //             $messages[] = 'Baris ' . $failure->row() . ': ' . implode(', ', $failure->errors());
+    //         }
 
-            \Log::error('Excel validation error', ['errors' => $messages]);
+    //         \Log::error('Excel validation error', ['errors' => $messages]);
 
-            return back()->with('error', 'Kesalahan validasi pada file Excel.')->with('failures', $messages);
-        } catch (\Throwable $e) {
-            \Log::error('Excel import error', ['message' => $e->getMessage()]);
-            return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
-        }
-    }
+    //         return back()->with('error', 'Kesalahan validasi pada file Excel.')->with('failures', $messages);
+    //     } catch (\Throwable $e) {
+    //         \Log::error('Excel import error', ['message' => $e->getMessage()]);
+    //         return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
+    //     }
+    // }
 
 
-    public function storeReguler(Request $request)
-    {
-        $request->validate([
-            'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-        ]);
+    // public function storeReguler(Request $request)
+    // {
+    //     $request->validate([
+    //         'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
+    //     ]);
 
-        try {
-            Excel::import(new PembelianRegulerImport, $request->file('document'));
-        } catch (\Throwable $e) {
-            \Log::error('Excel import error', ['message' => $e->getMessage()]);
-            return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
-        }
+    //     try {
+    //         Excel::import(new PembelianRegulerImport, $request->file('document'));
+    //     } catch (\Throwable $e) {
+    //         \Log::error('Excel import error', ['message' => $e->getMessage()]);
+    //         return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
+    //     }
 
-        return back()->with('success', 'Dokumen Reguler berhasil diimpor!');
-    }
+    //     return back()->with('success', 'Dokumen Reguler berhasil diimpor!');
+    // }
 
-    public function storeUrgent(Request $request)
-    {
-        $request->validate([
-            'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-        ]);
+    // public function storeUrgent(Request $request)
+    // {
+    //     $request->validate([
+    //         'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
+    //     ]);
 
-        try {
-            Excel::import(new PembelianUrgentImport, $request->file('document'));
-        } catch (\Throwable $e) {
-            \Log::error('Excel import error', ['message' => $e->getMessage()]);
-            return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
-        }
+    //     try {
+    //         Excel::import(new PembelianUrgentImport, $request->file('document'));
+    //     } catch (\Throwable $e) {
+    //         \Log::error('Excel import error', ['message' => $e->getMessage()]);
+    //         return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
+    //     }
 
-        return back()->with('success', 'Dokumen Urgent berhasil diimpor!');
-    }
+    //     return back()->with('success', 'Dokumen Urgent berhasil diimpor!');
+    // }
 
     public function save(Request $request, $type)
     {
@@ -350,7 +356,7 @@ class PembelianController extends Controller
             return (float) preg_replace('/[^\d.-]/', '', $value);
         };
 
-        // 🔹 Build lookup maps
+        // 🔹 Build validation map (key to total value)
         $validationMap = [];
         foreach ($validationRecords as $record) {
             $key = trim($record[$validationConnector] ?? '');
@@ -360,19 +366,19 @@ class PembelianController extends Controller
             $validationMap[$key] = ($validationMap[$key] ?? 0) + $value;
         }
 
-        $uploadedMap = [];
+        // 🔹 Create a map of uploaded values by key for validation comparison
+        $uploadedMapByGroup = [];
         foreach ($data as $row) {
             $key = trim($row[$uploadedConnector] ?? '');
             if ($key === '')
                 continue; // Skip empty keys
             $value = $cleanAndParseFloat($row[$uploadedSum] ?? 0);
-            $uploadedMap[$key] = ($uploadedMap[$key] ?? 0) + $value;
+            $uploadedMapByGroup[$key] = ($uploadedMapByGroup[$key] ?? 0) + $value;
         }
 
-        // 🔹 Compare totals
+        // 🔹 Compare grouped totals and identify invalid groups
         $invalidGroups = [];
-        $invalidRows = [];
-        foreach ($uploadedMap as $key => $uploadedValue) {
+        foreach ($uploadedMapByGroup as $key => $uploadedValue) {
             $validationValue = $validationMap[$key] ?? null;
             if ($validationValue === null) {
                 $invalidGroups[$key] = [
@@ -380,11 +386,7 @@ class PembelianController extends Controller
                     'uploaded_total' => $uploadedValue,
                     'source_total' => 0
                 ];
-                continue;
-            }
-
-            // Using a small epsilon for float comparison is safer
-            if (abs($uploadedValue - $validationValue) > 0.01) {
+            } else if (abs($uploadedValue - $validationValue) > 0.01) {
                 $invalidGroups[$key] = [
                     'error' => 'Total mismatch between uploaded and source data',
                     'uploaded_total' => $uploadedValue,
@@ -393,12 +395,53 @@ class PembelianController extends Controller
             }
         }
 
+        // 🔹 Count mismatched records before grouping (each individual record that belongs to an invalid group)
+        $invalidRows = [];
+        $mismatchedRecordCount = 0;
+        
+        foreach ($data as $index => $row) {
+            $key = trim($row[$uploadedConnector] ?? '');
+            if ($key === '')
+                continue; // Skip empty keys
+            
+            // Check if this row's key belongs to an invalid group
+            if (isset($invalidGroups[$key])) {
+                // This row is part of an invalid group, so count it as mismatched
+                $invalidRows[] = [
+                    'row_index' => $index,
+                    'key_value' => $key,
+                    'total_omset' => $cleanAndParseFloat($row[$uploadedSum] ?? 0),
+                    'error' => $invalidGroups[$key]['error']
+                ];
+                $mismatchedRecordCount++;
+            }
+        }
+
         // 🔹 Summary and response
         $executionTime = microtime(true) - $startTime;
         Log::info('Validation completed', [
             'invalidGroupCount' => count($invalidGroups),
+            'invalidRowCount' => $mismatchedRecordCount,
             'executionTime' => $executionTime,
-            'status' => count($invalidGroups) > 0 ? 'invalid' : 'valid'
+            'status' => $mismatchedRecordCount > 0 ? 'invalid' : 'valid'
+        ]);
+
+        // 🔹 Save validation result to database
+        $totalRecords = count($data);
+        $mismatchedRecords = $mismatchedRecordCount;
+        $matchedRecords = $totalRecords - $mismatchedRecords;
+        $score = $totalRecords > 0 ? round(($matchedRecords / $totalRecords) * 100, 2) : 100.00;
+
+        \App\Models\Validation::create([
+            'file_name' => $filename,
+            'role' => auth()->user()?->role ?? 'unknown', // assuming user is authenticated, fallback to 'unknown'
+            'user_id' => auth()->user()?->id ?? null, // assuming user is authenticated, fallback to null
+            'document_type' => 'Pembelian',
+            'document_category' => ucfirst(strtolower($type)), // Reguler, Retur, Urgent
+            'score' => $score,
+            'total_records' => $totalRecords,
+            'matched_records' => $matchedRecords,
+            'mismatched_records' => $mismatchedRecords,
         ]);
 
         return response()->json([
@@ -694,35 +737,31 @@ class PembelianController extends Controller
 
     public function show($id)
     {
+        $validation = \App\Models\Validation::find($id);
 
-        if ($id == '2') {
-            $dummyData = [
-                'fileName' => 'laporan_q3_error.xlsx',
-                'role' => 'Manager',
-                'category' => 'Urgent',
-                'score' => 85.50,
-                'matched' => 1710,
-                'total' => 2000,
-                'discrepancy' => 290,
-                'isValid' => false,
-            ];
-        } else {
-            $dummyData = [
-                'fileName' => 'beli_reg_sap.csv',
-                'role' => 'Accountant',
-                'category' => 'Reguler',
-                'score' => 100.00,
-                'matched' => 4020,
-                'total' => 4020,
-                'discrepancy' => 0,
-                'isValid' => true,
-            ];
+        if (!$validation) {
+            return Inertia::render('pembelian/show', [
+                'validationId' => $id,
+                'validationData' => null,
+                'error' => 'Validation data not found',
+            ]);
         }
+
+        $validationData = [
+            'fileName' => $validation->file_name,
+            'role' => $validation->role,
+            'category' => $validation->document_category,
+            'score' => $validation->score,
+            'matched' => $validation->matched_records,
+            'total' => $validation->total_records,
+            'mismatched' => $validation->mismatched_records,
+            'isValid' => $validation->mismatched_records === 0,
+        ];
 
 
         return Inertia::render('pembelian/show', [
             'validationId' => $id,
-            'validationData' => $dummyData,
+            'validationData' => $validationData,
         ]);
     }
 }

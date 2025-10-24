@@ -35,6 +35,7 @@ import { route } from 'ziggy-js';
 
 interface UploadPageProps {
     document_type: string;
+    document_category: string;
 }
 
 interface PageProps {
@@ -69,14 +70,14 @@ interface ValidationResult {
     }[];
 }
 
-export default function UploadPage({ document_type }: UploadPageProps) {
+export default function UploadPage({ document_type, document_category }: UploadPageProps) {
     const { flash } = usePage<PageProps>().props;
 
     const saveUrl = route('pembelian.save', {
-        type: document_type.toLowerCase(),
+        type: document_category.toLowerCase(),
     });
     const validateUrl = route('pembelian.validateFile', {
-        type: document_type.toLowerCase(),
+        type: document_category.toLowerCase(),
     });
 
     const { data, setData, reset } = useForm<{ document: File | null }>({
@@ -212,6 +213,7 @@ export default function UploadPage({ document_type }: UploadPageProps) {
             });
             setValidationResult(response.data);
             setStep('validation_complete');
+            console.log(response.data);
         } catch (error: any) {
             console.error('❌ Validation failed', error);
             const errorMessage =
@@ -227,14 +229,14 @@ export default function UploadPage({ document_type }: UploadPageProps) {
 
     return (
         <AppLayout>
-            <Head title={`Upload Dokumen ${document_type}`} />
+            <Head title={`Upload Dokumen ${document_category}`} />
             <div className="container mx-auto px-4 py-10">
                 <Card className="mx-auto max-w-4xl">
                     <CardHeader>
                         <div className="mb-2 flex items-start justify-between">
                             <div>
                                 <CardTitle className="text-2xl">
-                                    Upload Dokumen Pembelian {document_type}
+                                    Upload Dokumen Pembelian {document_category}
                                 </CardTitle>
                                 <CardDescription className="mt-1">
                                     Unggah, pratinjau, dan proses file Anda

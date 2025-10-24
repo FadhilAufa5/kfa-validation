@@ -27,7 +27,7 @@ interface ValidationData {
     score: number;
     matched: number;
     total: number;
-    discrepancy: number;
+    mismatched: number;
     isValid: boolean;
 }
 
@@ -79,8 +79,8 @@ export default function PembelianShow() {
             icon: FileCheck2,
         },
         {
-            title: 'Total Discrepancy Records',
-            value: validationData.discrepancy.toLocaleString('id-ID'),
+            title: 'Total mismatched Records',
+            value: validationData.mismatched,
             icon: FileX2,
         },
     ];
@@ -146,7 +146,7 @@ export default function PembelianShow() {
                             <p className="mt-1 text-gray-500 dark:text-gray-400">
                                 {validationData.isValid
                                     ? 'Tidak ada perbedaan data ditemukan!'
-                                    : `${validationData.discrepancy.toLocaleString(
+                                    : `${validationData.mismatched.toLocaleString(
                                           'id-ID',
                                       )} perbedaan data ditemukan!`}
                             </p>

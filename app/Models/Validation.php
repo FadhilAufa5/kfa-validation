@@ -11,11 +11,13 @@ class Validation extends Model
 
     protected $fillable = [
         'file_name',
+        'user_id',
         'role',
-        'category',
+        'document_type',
+        'document_category',
         'score',
         'total_records',
         'matched_records',
-        'discrepancy_records',
+        'mismatched_records',
     ];
 }
