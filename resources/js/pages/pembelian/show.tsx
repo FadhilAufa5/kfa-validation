@@ -174,6 +174,8 @@ export default function PembelianShow() {
     const [validationDocData, setValidationDocData] = useState<any[] | null>(
         null,
     );
+    const [uploadedTotal, setUploadedTotal] = useState<number | null>(null);
+    const [sourceTotal, setSourceTotal] = useState<number | null>(null);
     const [popupLoading, setPopupLoading] = useState(false);
 
     // Loading state jika data belum ada
@@ -354,6 +356,8 @@ export default function PembelianShow() {
         setPopupLoading(true);
         setUploadedDocData(null);
         setValidationDocData(null);
+        setUploadedTotal(null);
+        setSourceTotal(null);
 
         try {
             // Fetch both documents in parallel
@@ -371,6 +375,16 @@ export default function PembelianShow() {
                 'Server Payload (Validation):',
                 validationResponse.data,
             );
+
+            // Find the corresponding group in invalidGroupsData to get the totals
+            const invalidGroup = invalidGroupsData?.data?.find(
+                (group) => group.key === key
+            );
+            
+            if (invalidGroup) {
+                setUploadedTotal(invalidGroup.uploaded_total);
+                setSourceTotal(invalidGroup.source_total);
+            }
 
             // Defensively extract the data array from the server's response body.
             // This handles two cases:
@@ -591,9 +605,11 @@ export default function PembelianShow() {
                 <DocumentComparisonPopup
                     isOpen={isPopupOpen}
                     onClose={() => setIsPopupOpen(false)}
-                    uploadedData={uploadedDocData}
-                    validationData={validationDocData}
+                    uploadedDocData={uploadedDocData}
+                    validationDocData={validationDocData}
                     connectorKey={selectedKey}
+                    uploadedTotal={uploadedTotal}
+                    sourceTotal={sourceTotal}
                     isLoading={popupLoading}
                 />
             </div>
@@ -1010,6 +1026,7 @@ const renderDocumentData = (data: any[] | null) => {
     let dataRows: any[] = [];
     // Check if the first element is an object but not an array (handles array of objects)
     const isArrayOfObjects =
+        data.length > 0 && 
         typeof data[0] === 'object' &&
         data[0] !== null &&
         !Array.isArray(data[0]);
@@ -1018,11 +1035,22 @@ const renderDocumentData = (data: any[] | null) => {
         // Data format: [{ header1: valueA, header2: valueB }, ...]
         headers = Object.keys(data[0]);
         dataRows = data; // Use the entire array as data rows
-    } else if (Array.isArray(data[0])) {
+    } else if (data.length > 0 && Array.isArray(data[0])) {
         // Data format: [ [header1, header2], [valueA, valueB], ... ]
         // We assume the first row is the header
         headers = data[0].map(String); // Ensure all headers are strings
         dataRows = data.slice(1);
+    } else if (Array.isArray(data) && data.length > 0) {
+        // Handle case where the server sends headers in first row and content in remaining rows (array of arrays)
+        // Data format: [ [header1, header2], [valueA, valueB], [valueC, valueD], ... ]
+        if (Array.isArray(data[0])) {
+            headers = data[0].map(String); // First row contains headers
+            dataRows = data.slice(1); // Remaining rows contain data
+        } else {
+            // Single row of data without headers
+            headers = ['Value']; // Default header
+            dataRows = [data]; // Wrap the data
+        }
     } else {
         // Fallback for unexpected or unsupported formats
         return (
@@ -1040,44 +1068,48 @@ const renderDocumentData = (data: any[] | null) => {
         );
     }
 
-    // FIXED: Removed max-h and overflow-y-auto from this div
+    // Render the data in a table format for better visualization
     return (
-        <div className="space-y-3">
+        <div className="overflow-x-auto">
             <div className="mb-2 text-sm font-medium text-muted-foreground">
                 Total: {dataRows.length} baris data ditemukan
             </div>
-            {dataRows.map((row, rowIndex) => (
-                <div
-                    key={rowIndex}
-                    className="space-y-2 rounded-lg border bg-white p-3 shadow-sm dark:bg-gray-800"
-                >
-                    <div className="mb-2 text-sm font-semibold text-blue-600 dark:text-blue-400">
-                        Baris Data {rowIndex + 1}
-                    </div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {headers.map((header, colIndex) => {
-                            const value = isArrayOfObjects
-                                ? row[header]
-                                : row[colIndex];
-                            return (
-                                <div
-                                    key={`${header}-${colIndex}`}
-                                    className="flex flex-col rounded border-l-2 border-blue-400 bg-gray-50 p-2 text-sm dark:bg-gray-700"
-                                >
-                                    <span className="mb-1 text-xs font-semibold text-gray-600 uppercase dark:text-gray-400">
-                                        {header}
-                                    </span>
-                                    <span className="font-medium break-all text-gray-900 dark:text-gray-100">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        {headers.map((header, index) => (
+                            <th 
+                                key={index}
+                                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-300"
+                            >
+                                {header}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-800">
+                    {dataRows.map((row, rowIndex) => (
+                        <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
+                            {headers.map((_, colIndex) => {
+                                const value = Array.isArray(row) 
+                                    ? row[colIndex] 
+                                    : row[headers[colIndex]];
+                                return (
+                                    <td 
+                                        key={colIndex}
+                                        className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate"
+                                        title={value !== null && value !== undefined ? String(value) : '-'}
+                                    >
                                         {value !== null && value !== undefined
                                             ? String(value)
                                             : '-'}
-                                    </span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            ))}
+                                    </td>
+                                );
+                            })}
+                        </tr>
+                        ))}
+                </tbody>
+            </table>
         </div>
     );
 };
@@ -1090,6 +1122,8 @@ const DocumentComparisonPopup = React.memo(
         uploadedDocData,
         validationDocData,
         connectorKey,
+        uploadedTotal,
+        sourceTotal,
         isLoading,
     }: {
         isOpen: boolean;
@@ -1097,6 +1131,8 @@ const DocumentComparisonPopup = React.memo(
         uploadedDocData: any[] | null;
         validationDocData: any[] | null;
         connectorKey: string;
+        uploadedTotal: number | null;
+        sourceTotal: number | null;
         isLoading: boolean;
     }) => {
         // Calculate totals if data is available
@@ -1113,7 +1149,7 @@ const DocumentComparisonPopup = React.memo(
 
         return (
             <Dialog open={isOpen} onOpenChange={onClose}>
-                <DialogContent className="max-h-[90vh] max-w-7xl overflow-hidden">
+                <DialogContent className="max-h-[90vh] w-full max-w-full overflow-hidden">
                     <DialogHeader>
                         <DialogTitle className="text-xl font-bold">
                             Perbandingan Dokumen
@@ -1124,6 +1160,27 @@ const DocumentComparisonPopup = React.memo(
                                 {connectorKey}
                             </span>
                         </DialogDescription>
+                        {!isLoading &&
+                            (uploadedTotal !== null || sourceTotal !== null) && (
+                                <div className="mt-2 flex flex-wrap gap-4 text-sm">
+                                    {uploadedTotal !== null && (
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-blue-600">Total Diupload:</span>
+                                            <Badge variant="secondary" className="px-2 py-1">
+                                                {uploadedTotal.toLocaleString('id-ID')}
+                                            </Badge>
+                                        </div>
+                                    )}
+                                    {sourceTotal !== null && (
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-green-600">Total Sumber:</span>
+                                            <Badge variant="outline" className="px-2 py-1">
+                                                {sourceTotal.toLocaleString('id-ID')}
+                                            </Badge>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         {!isLoading &&
                             (uploadedCount > 0 || validationCount > 0) && (
                                 <div className="mt-2 flex gap-4 text-sm">
@@ -1145,34 +1202,37 @@ const DocumentComparisonPopup = React.memo(
                             </span>
                         </div>
                     ) : (
-                        <div className="grid h-[65vh] grid-cols-1 gap-6 lg:grid-cols-2">
-                            {/* Uploaded Document */}
-                            <Card className="flex flex-col overflow-hidden">
-                                <CardHeader className="bg-blue-50 dark:bg-blue-900/20">
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <FileText className="h-5 w-5 text-blue-600" />
-                                        Dokumen Diupload
-                                    </CardTitle>
-                                </CardHeader>
-                                {/* FIXED: Made CardContent scrollable */}
-                                <CardContent className="flex-1 overflow-y-auto pt-4">
-                                    {renderDocumentData(uploadedDocData)}
-                                </CardContent>
-                            </Card>
+                        <div className="flex h-[65vh] flex-col gap-6 overflow-hidden">
+                            {/* Container for both documents - side by side on large screens, stacked on small screens */}
+                            <div className="flex flex-1 flex-col gap-6 overflow-hidden md:flex-row">
+                                {/* Uploaded Document */}
+                                <Card className="flex flex-1 flex-col overflow-hidden">
+                                    <CardHeader className="bg-blue-50 dark:bg-blue-900/20">
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <FileText className="h-5 w-5 text-blue-600" />
+                                            Dokumen Diupload
+                                        </CardTitle>
+                                    </CardHeader>
+                                    {/* FIXED: Made CardContent scrollable */}
+                                    <CardContent className="flex-1 overflow-y-auto pt-4">
+                                        {renderDocumentData(uploadedDocData)}
+                                    </CardContent>
+                                </Card>
 
-                            {/* Validation Document */}
-                            <Card className="flex flex-col overflow-hidden">
-                                <CardHeader className="bg-green-50 dark:bg-green-900/20">
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <FileCheck2 className="h-5 w-5 text-green-600" />
-                                        Dokumen Validasi
-                                    </CardTitle>
-                                </CardHeader>
-                                {/* FIXED: Made CardContent scrollable */}
-                                <CardContent className="flex-1 overflow-y-auto pt-4">
-                                    {renderDocumentData(validationDocData)}
-                                </CardContent>
-                            </Card>
+                                {/* Validation Document */}
+                                <Card className="flex flex-1 flex-col overflow-hidden">
+                                    <CardHeader className="bg-green-50 dark:bg-green-900/20">
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <FileCheck2 className="h-5 w-5 text-green-600" />
+                                            Dokumen Validasi
+                                        </CardTitle>
+                                    </CardHeader>
+                                    {/* FIXED: Made CardContent scrollable */}
+                                    <CardContent className="flex-1 overflow-y-auto pt-4">
+                                        {renderDocumentData(validationDocData)}
+                                    </CardContent>
+                                </Card>
+                            </div>
                         </div>
                     )}
                 </DialogContent>
