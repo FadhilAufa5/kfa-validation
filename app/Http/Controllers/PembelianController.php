@@ -486,24 +486,6 @@ class PembelianController extends Controller
     }
 
 
-    public function dashboard()
-    {
-        $files = collect(Storage::files('uploads'))->map(function ($path) {
-            $fullPath = storage_path("app/{$path}");
-            return [
-                'name' => basename($path),
-                'path' => $path,
-                // 'size' => round(File::size($fullPath) / 1024, 2), // size in KB
-                // 'modified' => date('Y-m-d H:i:s', File::lastModified($fullPath)),
-                // 'url' => route('files.download', ['filename' => basename($path)]),
-            ];
-        });
-
-        return inertia('UploadsDashboard', [
-            'files' => $files,
-        ]);
-    }
-
     public function delete($filename)
     {
         $path = "uploads/{$filename}";
@@ -800,7 +782,103 @@ class PembelianController extends Controller
             'validationData' => $validationData,
         ]);
     }
-    
+
+    /**
+     * Get uploaded document data by filename
+     */
+    public function getUploadedDocumentData($filename)
+    {
+        try {
+            $path = "uploads/{$filename}";
+
+            if (!Storage::exists($path)) {
+                return response()->json(['error' => 'File tidak ditemukan.'], 404);
+            }
+
+            $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+            $fullPath = Storage::path($path);
+            $data = [];
+
+            if (in_array($extension, ['xlsx', 'xls'])) {
+                $spreadsheet = IOFactory::load($fullPath);
+                $sheet = $spreadsheet->getActiveSheet();
+                $data = $sheet->toArray(null, true, true, true);
+            } elseif ($extension === 'csv') {
+                $content = file_get_contents($fullPath);
+                $encoding = mb_detect_encoding($content, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+                if ($encoding !== 'UTF-8') {
+                    $content = mb_convert_encoding($content, 'UTF-8', $encoding);
+                }
+
+                $csv = Reader::createFromString($content);
+                $csv->setDelimiter(',');
+                $records = iterator_to_array($csv->getRecords());
+                $data = array_values($records);
+            } else {
+                return response()->json(['error' => 'Format file tidak didukung.'], 400);
+            }
+
+            // Return only first 100 rows for performance
+            $preview = array_slice($data, 0, 100);
+
+            return response()->json([
+                'filename' => $filename,
+                'data' => $preview,
+                'total_rows' => count($data),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Gagal membaca file: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Get validation document data by filename
+     */
+    public function getValidationDocumentData($filename)
+    {
+        try {
+            $path = "validation/{$filename}";
+
+            if (!Storage::exists($path)) {
+                return response()->json(['error' => 'File validasi tidak ditemukan.'], 404);
+            }
+
+            $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+            $fullPath = Storage::path($path);
+            $data = [];
+
+            if (in_array($extension, ['xlsx', 'xls'])) {
+                $spreadsheet = IOFactory::load($fullPath);
+                $sheet = $spreadsheet->getActiveSheet();
+                $data = $sheet->toArray(null, true, true, true);
+            } elseif ($extension === 'csv') {
+                $content = file_get_contents($fullPath);
+                $encoding = mb_detect_encoding($content, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+                if ($encoding !== 'UTF-8') {
+                    $content = mb_convert_encoding($content, 'UTF-8', $encoding);
+                }
+
+                $csv = Reader::createFromString($content);
+                $csv->setDelimiter(',');
+                $records = iterator_to_array($csv->getRecords());
+                $data = array_values($records);
+            } else {
+                return response()->json(['error' => 'Format file validasi tidak didukung.'], 400);
+            }
+
+            // Return only first 100 rows for performance
+            $preview = array_slice($data, 0, 100);
+
+            return response()->json([
+                'filename' => $filename,
+                'data' => $preview,
+                'total_rows' => count($data),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Gagal membaca file validasi: ' . $e->getMessage()], 500);
+        }
+    }
+
     /**
      * Get paginated invalid groups data
      */
@@ -813,16 +891,25 @@ class PembelianController extends Controller
         }
 
         $invalidGroups = $validation->validation_details['invalid_groups'] ?? [];
-        
+
         // Convert to array format for easier processing
-        $items = [];
+        $allItems = [];
         foreach ($invalidGroups as $key => $group) {
-            $items[] = array_merge(['key' => $key], $group, [
+            $allItems[] = array_merge(['key' => $key], $group, [
                 // Determine source label for filtering
                 'sourceLabel' => $this->getSourceLabel($group),
             ]);
         }
-        
+
+        // Extract unique categories and sources for filters
+        $uniqueCategories = array_values(array_unique(array_map(function ($item) {
+            return $item['discrepancy_category'];
+        }, $allItems)));
+
+        $uniqueSources = array_values(array_unique(array_map(function ($item) {
+            return $item['sourceLabel'];
+        }, $allItems)));
+
         // Get request parameters for filtering and pagination
         $searchTerm = $request->input('search', '');
         $categoryFilter = $request->input('category', '');
@@ -833,47 +920,48 @@ class PembelianController extends Controller
         $perPage = $request->input('per_page', 10);
 
         // Apply search filter - search in the 'key' field (Kunci column)
+        $filteredItems = $allItems;
         if ($searchTerm) {
-            $items = array_filter($items, function($item) use ($searchTerm) {
+            $filteredItems = array_filter($filteredItems, function ($item) use ($searchTerm) {
                 return stripos($item['key'], $searchTerm) !== false;
             });
         }
 
         // Apply category filter
         if ($categoryFilter) {
-            $items = array_filter($items, function($item) use ($categoryFilter) {
+            $filteredItems = array_filter($filteredItems, function ($item) use ($categoryFilter) {
                 return $item['discrepancy_category'] === $categoryFilter;
             });
         }
 
         // Apply source filter
         if ($sourceFilter) {
-            $items = array_filter($items, function($item) use ($sourceFilter) {
+            $filteredItems = array_filter($filteredItems, function ($item) use ($sourceFilter) {
                 return $item['sourceLabel'] === $sourceFilter;
             });
         }
 
         // Apply sorting
         if ($sortKey && $sortDirection) {
-            usort($items, function($a, $b) use ($sortKey, $sortDirection) {
+            usort($filteredItems, function ($a, $b) use ($sortKey, $sortDirection) {
                 $aValue = $a[$sortKey] ?? null;
                 $bValue = $b[$sortKey] ?? null;
-                
+
                 // Handle comparison based on data type
                 if (is_string($aValue) && is_string($bValue)) {
                     $result = strcasecmp($aValue, $bValue);
                 } else {
                     $result = $aValue <=> $bValue;
                 }
-                
+
                 return $sortDirection === 'desc' ? -$result : $result;
             });
         }
 
         // Calculate pagination
-        $totalItems = count($items);
+        $totalItems = count($filteredItems);
         $offset = ($page - 1) * $perPage;
-        $paginatedItems = array_slice($items, $offset, $perPage);
+        $paginatedItems = array_slice($filteredItems, $offset, $perPage);
 
         return response()->json([
             'data' => $paginatedItems,
@@ -892,9 +980,13 @@ class PembelianController extends Controller
                 'key' => $sortKey,
                 'direction' => $sortDirection,
             ],
+            'uniqueFilters' => [
+                'categories' => $uniqueCategories,
+                'sources' => $uniqueSources,
+            ],
         ]);
     }
-    
+
     /**
      * Get paginated matched records data
      */
@@ -906,8 +998,8 @@ class PembelianController extends Controller
             return response()->json(['error' => 'Validation data not found'], 404);
         }
 
-        $matchedRows = $validation->validation_details['matched_rows'] ?? [];
-        
+        $allMatchedRows = $validation->validation_details['matched_rows'] ?? [];
+
         // Get request parameters for filtering and pagination
         $searchTerm = $request->input('search', '');
         $sortKey = $request->input('sort_key', 'row_index');
@@ -916,36 +1008,37 @@ class PembelianController extends Controller
         $perPage = $request->input('per_page', 10);
 
         // Apply search filter - search in multiple fields
+        $filteredMatchedRows = $allMatchedRows;
         if ($searchTerm) {
-            $matchedRows = array_filter($matchedRows, function($item) use ($searchTerm) {
+            $filteredMatchedRows = array_filter($filteredMatchedRows, function ($item) use ($searchTerm) {
                 return stripos($item['key_value'] ?? '', $searchTerm) !== false ||
-                       stripos((string)($item['row_index'] ?? ''), $searchTerm) !== false ||
-                       stripos((string)($item['validation_source_total'] ?? ''), $searchTerm) !== false ||
-                       stripos((string)($item['uploaded_total'] ?? ''), $searchTerm) !== false;
+                    stripos((string) ($item['row_index'] ?? ''), $searchTerm) !== false ||
+                    stripos((string) ($item['validation_source_total'] ?? ''), $searchTerm) !== false ||
+                    stripos((string) ($item['uploaded_total'] ?? ''), $searchTerm) !== false;
             });
         }
 
         // Apply sorting
         if ($sortKey && $sortDirection) {
-            usort($matchedRows, function($a, $b) use ($sortKey, $sortDirection) {
+            usort($filteredMatchedRows, function ($a, $b) use ($sortKey, $sortDirection) {
                 $aValue = $a[$sortKey] ?? null;
                 $bValue = $b[$sortKey] ?? null;
-                
+
                 // Handle comparison based on data type
                 if (is_string($aValue) && is_string($bValue)) {
                     $result = strcasecmp($aValue, $bValue);
                 } else {
                     $result = $aValue <=> $bValue;
                 }
-                
+
                 return $sortDirection === 'desc' ? -$result : $result;
             });
         }
 
         // Calculate pagination
-        $totalItems = count($matchedRows);
+        $totalItems = count($filteredMatchedRows);
         $offset = ($page - 1) * $perPage;
-        $paginatedItems = array_slice($matchedRows, $offset, $perPage);
+        $paginatedItems = array_slice($filteredMatchedRows, $offset, $perPage);
 
         return response()->json([
             'data' => $paginatedItems,
@@ -962,9 +1055,13 @@ class PembelianController extends Controller
                 'key' => $sortKey,
                 'direction' => $sortDirection,
             ],
+            'uniqueFilters' => [
+                // For matched records, we don't have categories or sources like invalid groups
+                // but we can still return unique values if needed in the future
+            ],
         ]);
     }
-    
+
     /**
      * Helper method to determine source label for filtering
      */
@@ -978,12 +1075,231 @@ class PembelianController extends Controller
         if ($isKeyNotFound) {
             return 'Tidak Ditemukan di Sumber';
         } else if ($isFromUploaded) {
-            return 'File Diupload';
-        } else if ($isFromValidation) {
             return 'File Sumber';
+        } else if ($isFromValidation) {
+            return 'File Diupload';
         } else {
             return 'Tidak Diketahui';
         }
+    }
+
+    /**
+     * Get validation history with search and filter
+     */
+    public function getValidationHistory(Request $request)
+    {
+        $search = $request->input('search', '');
+        $filterStatus = $request->input('status', 'All');
+        $page = $request->input('page', 1);
+        $perPage = $request->input('per_page', 10);
+
+        $query = \App\Models\Validation::query();
+
+        // Apply search filter
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('file_name', 'LIKE', "%{$search}%")
+                    ->orWhere('role', 'LIKE', "%{$search}%")
+                    ->orWhere('document_type', 'LIKE', "%{$search}%")
+                    ->orWhere('document_category', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Apply status filter
+        if ($filterStatus !== 'All') {
+            if ($filterStatus === 'Valid') {
+                $query->where('mismatched_records', 0);
+            } elseif ($filterStatus === 'Invalid') {
+                $query->where('mismatched_records', '>', 0);
+            }
+        }
+
+        $query->orderBy('created_at', 'desc');
+
+        $validations = $query->paginate($perPage, ['*'], 'page', $page);
+
+        // Transform the data to match the table format
+        $data = $validations->getCollection()->map(function ($validation) {
+            $isValid = $validation->mismatched_records === 0;
+
+            return [
+                'id' => $validation->id,
+                'user' => $validation->role,
+                'fileName' => $validation->file_name,
+                'documentCategory' => $validation->document_category,
+                'uploadTime' => $validation->created_at->format('Y-m-d H:i'),
+                'score' => number_format($validation->score, 2) . '%',
+                'status' => $isValid ? 'Valid' : 'Invalid',
+            ];
+        });
+
+        return response()->json([
+            'data' => $data,
+            'pagination' => [
+                'current_page' => $validations->currentPage(),
+                'last_page' => $validations->lastPage(),
+                'per_page' => $validations->perPage(),
+                'total' => $validations->total(),
+                'from' => $validations->firstItem(),
+                'to' => $validations->lastItem(),
+            ],
+            'filters' => [
+                'search' => $search,
+                'status' => $filterStatus,
+            ],
+        ]);
+    }
+
+    /**
+     * Get document comparison data for a specific key
+     */
+    public function getDocumentComparisonData($id, Request $request)
+    {
+        $validation = \App\Models\Validation::find($id);
+
+        if (!$validation) {
+            Log::error('Validation data not found');
+            return response()->json(['error' => 'Validation data not found'], 404);
+        }
+
+        $key = $request->input('key');
+        $type = $request->input('type'); // 'uploaded' or 'validation'
+
+        if (!$key || !$type) {
+            Log::error('Missing required parameters');
+            return response()->json(['error' => 'Missing required parameters'], 400);
+        }
+
+        try {
+            // Get the document category to determine which config to use
+            $docCategory = strtolower($validation->document_category);
+            $config = Config::get('pembelian_validation.' . $docCategory);
+
+            if (!$config) {
+                Log::error('Invalid document category');
+                return response()->json(['error' => 'Invalid document category'], 400);
+            }
+
+            if ($type === 'uploaded') {
+                // Read uploaded file
+                $filename = $validation->file_name;
+                $path = "uploads/{$filename}";
+
+                if (!Storage::exists($path)) {
+                    Log::error('Uploaded file not found');
+                    return response()->json(['error' => 'Uploaded file not found'], 404);
+                }
+
+                $connectorColumn = $config['connector'][0]; // e.g., 'NOMOR PENERIMAAN'
+                $data = $this->readFileAndFilterByKey($path, $key, $connectorColumn);
+                Log::info('Uploaded Data Response', ['data' => $data]);
+
+                return response()->json([
+                    'filename' => $filename,
+                    'connector_column' => $connectorColumn,
+                    'key' => $key,
+                    'data' => $data,
+                ]);
+
+            } elseif ($type === 'validation') {
+                // Read validation file
+                $validationDoc = $config['doc_val'];
+                $path = "validation/{$validationDoc}.csv";
+
+                if (!Storage::exists($path)) {
+                    return response()->json(['error' => 'Validation file not found'], 404);
+                }
+
+                $connectorColumn = $config['connector'][1]; // e.g., 'no_transaksi'
+                $data = $this->readFileAndFilterByKey($path, $key, $connectorColumn);
+                Log::info('Validation Data Response', ['data' => $data]);
+
+                return response()->json([
+                    'filename' => "{$validationDoc}.csv",
+                    'connector_column' => $connectorColumn,
+                    'key' => $key,
+                    'data' => $data,
+                ]);
+            }
+
+            return response()->json(['error' => 'Invalid type parameter'], 400);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching document comparison data', [
+                'error' => $e->getMessage(),
+                'validation_id' => $id,
+                'key' => $key,
+                'type' => $type,
+            ]);
+            return response()->json(['error' => 'Failed to fetch document data: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Helper method to read file and filter by key
+     */
+    private function readFileAndFilterByKey($path, $key, $connectorColumn)
+    {
+        $fullPath = Storage::path($path);
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $allData = [];
+        $headers = [];
+
+        if (in_array($extension, ['xlsx', 'xls'])) {
+            $spreadsheet = IOFactory::load($fullPath);
+            $sheet = $spreadsheet->getActiveSheet();
+            $headerRow = $sheet->rangeToArray('A1:' . $sheet->getHighestColumn() . '1', null, true, true, true)[1];
+            $headers = array_map('trim', $headerRow);
+
+            foreach ($sheet->getRowIterator(2) as $row) {
+                $rowData = [];
+                $cellIterator = $row->getCellIterator();
+                $cellIterator->setIterateOnlyExistingCells(false);
+
+                foreach ($cellIterator as $index => $cell) {
+                    $headerName = $headers[$index] ?? null;
+                    if ($headerName) {
+                        $rowData[$headerName] = $cell->getValue();
+                    }
+                }
+
+                if (count(array_filter($rowData))) {
+                    $allData[] = $rowData;
+                }
+            }
+        } elseif ($extension === 'csv') {
+            $content = file_get_contents($fullPath);
+            $encoding = mb_detect_encoding($content, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+            if ($encoding !== 'UTF-8') {
+                $content = mb_convert_encoding($content, 'UTF-8', $encoding);
+            }
+
+            $csv = Reader::createFromString($content);
+            $csv->setDelimiter(',');
+            $csv->setHeaderOffset(0);
+            $headers = array_map('trim', $csv->getHeader());
+            $allData = iterator_to_array($csv->getRecords());
+        }
+
+        // Filter data by the connector key (case-insensitive and trimmed)
+        $filteredData = array_filter($allData, function ($row) use ($connectorColumn, $key) {
+            $rowKey = trim((string)($row[$connectorColumn] ?? ''));
+            $searchKey = trim((string)$key);
+            return strcasecmp($rowKey, $searchKey) === 0; // Case-insensitive comparison
+        });
+
+        Log::info('Filtered data count', [
+            'connector_column' => $connectorColumn,
+            'key' => $key,
+            'total_rows' => count($allData),
+            'filtered_count' => count($filteredData)
+        ]);
+
+        // Add headers as first element
+        return [
+            $headers,
+            ...array_values($filteredData)
+        ];
     }
 }
 

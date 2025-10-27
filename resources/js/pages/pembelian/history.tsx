@@ -16,6 +16,17 @@ import {
 } from "@/components/ui/table";
 import { Folder, Plus, Eye, Search } from "lucide-react";
 import { type BreadcrumbItem } from "@/types";
+import axios from 'axios';
+
+interface ValidationLog {
+  id: number;
+  user: string;
+  fileName: string;
+  documentCategory: string;
+  uploadTime: string;
+  score: string;
+  status: "Valid" | "Invalid";
+}
 
 export const CircularScore = ({ score }: { score: string }) => {
   const numericScore = parseInt(score.replace("%", ""), 10);
@@ -76,44 +87,46 @@ export const CircularScore = ({ score }: { score: string }) => {
 };
 
 export default function ValidationLogPage() {
-  const logs = [
-    {
-      id: 1,
-      user: "Busdev",
-      fileType: "CSV",
-      fileName: "data_pembelian.csv",
-      role: "Admin",
-      uploadTime: "2025-10-14 10:25",
-      score: "50%",
-      status: "Invalid",
-    },
-    {
-      id: 2,
-      user: "Legal",
-      fileType: "XLSX",
-      fileName: "data_pembelian_08_25.xlsx",
-      role: "Admin",
-      uploadTime: "2025-10-15 09:42",
-      score: "100%",
-      status: "Valid",
-    },
-  ];
-
+  const [logs, setLogs] = useState<ValidationLog[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"All" | "Valid" | "Invalid">(
     "All"
   );
+  const [pagination, setPagination] = useState({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+    from: 0,
+    to: 0,
+  });
+  
+  // Fetch data from API
+  useEffect(() => {
+    fetchLogs();
+  }, [search, filterStatus]);
 
-  const filteredLogs = logs.filter(
-    (item) =>
-      (filterStatus === "All" || item.status === filterStatus) &&
-      (item.user.toLowerCase().includes(search.toLowerCase()) ||
-        item.fileName.toLowerCase().includes(search.toLowerCase()) ||
-        item.role.toLowerCase().includes(search.toLowerCase()))
-  );
+  const fetchLogs = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/pembelian/history/data', {
+        params: {
+          search,
+          status: filterStatus,
+        }
+      });
+      setLogs(response.data.data);
+      setPagination(response.data.pagination);
+    } catch (error) {
+      console.error('Error fetching validation logs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const countByStatus = {
-    All: logs.length,
+    All: pagination.total,
     Valid: logs.filter((i) => i.status === "Valid").length,
     Invalid: logs.filter((i) => i.status === "Invalid").length,
   };
@@ -131,7 +144,7 @@ export default function ValidationLogPage() {
 
   const breadcrumbs: BreadcrumbItem[] = [
     { title: "Pembelian", href: "/pembelian" },
-    { title: "History Pembelian", href: "/pembelian" },
+    { title: "History Pembelian", href: "/history/pembelian" },
   ];
 
   return (
@@ -152,7 +165,7 @@ export default function ValidationLogPage() {
           </div>
 
           <div className="flex gap-3 w-full md:w-auto">
-            <Link href="/penjualan">
+            <Link href="/pembelian">
               <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md">
                 <Plus className="w-4 h-4 mr-2" /> Add Process
               </Button>
@@ -223,9 +236,8 @@ export default function ValidationLogPage() {
                 <TableRow className="bg-gray-200/60 dark:bg-gray-900/60">
                   {[
                     "User",
-                    "File Type",
                     "File Name",
-                    "Role",
+                    "Document Category",
                     "Upload Time",
                     "Validation Score",
                     "Validation Status",
@@ -242,16 +254,24 @@ export default function ValidationLogPage() {
               </TableHeader>
 
               <TableBody>
-                {filteredLogs.length > 0 ? (
-                  filteredLogs.map((item) => (
+                {loading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="text-center text-gray-500 dark:text-gray-400 py-8 text-sm"
+                    >
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : logs.length > 0 ? (
+                  logs.map((item) => (
                     <TableRow
                       key={item.id}
                       className="even:bg-gray-50 odd:bg-white dark:even:bg-gray-900/30 dark:odd:bg-transparent transition-colors"
                     >
                       <TableCell>{item.user}</TableCell>
-                      <TableCell>{item.fileType}</TableCell>
                       <TableCell>{item.fileName}</TableCell>
-                      <TableCell>{item.role}</TableCell>
+                      <TableCell>{item.documentCategory}</TableCell>
                       <TableCell>{item.uploadTime}</TableCell>
                       <TableCell>
                         <CircularScore score={item.score} />
@@ -266,23 +286,23 @@ export default function ValidationLogPage() {
                         </span>
                       </TableCell>
 
-                      {/* ✅ Perbaikan di sini */}
+                      {/* ✅ Update the link to use the correct route */}
                       <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex items-center text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                        onClick={() => router.visit(`/pembelian/${item.id}`)}
-                      >
-                        <Eye className="w-4 h-4 mr-1" /> Detail
-                      </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="flex items-center text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                          onClick={() => router.visit(`/pembelian/${item.id}`)}
+                        >
+                          <Eye className="w-4 h-4 mr-1" /> Detail
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={7}
                       className="text-center text-gray-500 dark:text-gray-400 py-8 text-sm"
                     >
                       Tidak ada hasil untuk pencarian ini.

@@ -40,7 +40,7 @@ const pembelianNavItems: NavItem[] = [
     },
     {
         title: 'History Pembelian',
-        href: '/pembelian/history',
+        href: '/history/pembelian',
         icon: History,
     },
 ];

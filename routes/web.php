@@ -29,7 +29,7 @@ Route::get('/penjualan/konsi', [PenjualanController::class, 'konsi'])->name('pen
 
 // pembelian
 Route::get('/pembelian', [PembelianController::class, 'index'])->name('pembelian.index');
-Route::get('/pembelian/history', [PembelianController::class, 'history'])->name('pembelian.history');
+Route::get('/history/pembelian', [PembelianController::class, 'history'])->name('pembelian.history');
 Route::get('/pembelian/reguler', [PembelianController::class, 'reguler'])->name('pembelian.reguler');
 Route::post('/pembelian/reguler/upload', [PembelianController::class, 'upload'])->name('pembelian.reguler.upload');
 Route::post('/pembelian/reguler/process', [PembelianController::class, 'process'])->name('pembelian.reguler.process');
@@ -73,6 +73,12 @@ Route::post('/pembelian/process/{filename}', [PembelianController::class, 'proce
 Route::get('pembelian/{id}', [PembelianController::class, 'show'])->name('pembelian.show');
 Route::get('pembelian/{id}/invalid-groups', [PembelianController::class, 'getInvalidGroups'])->name('pembelian.invalid-groups');
 Route::get('pembelian/{id}/matched-records', [PembelianController::class, 'getMatchedRecords'])->name('pembelian.matched-records');
+Route::get('pembelian/{id}/document-comparison', [PembelianController::class, 'getDocumentComparisonData'])->name('pembelian.document-comparison');
+Route::get('pembelian/history/data', [PembelianController::class, 'getValidationHistory'])->name('pembelian.history.data');
+
+// Routes for document data popup
+Route::get('pembelian/document/{filename}/uploaded', [PembelianController::class, 'getUploadedDocumentData'])->name('pembelian.document.uploaded');
+Route::get('pembelian/document/{filename}/validation', [PembelianController::class, 'getValidationDocumentData'])->name('pembelian.document.validation');
 
 // user management 
 Route::get('/users', [UsersController::class, 'index'])->name('users.index');
