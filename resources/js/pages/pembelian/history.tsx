@@ -84,7 +84,7 @@ export default function ValidationLogPage() {
       fileName: "data_pembelian.csv",
       role: "Admin",
       uploadTime: "2025-10-14 10:25",
-      score: "50%",
+      score: "60%",
       status: "Invalid",
     },
     {

@@ -24,9 +24,8 @@ const ReportingIcon = () => (
 
 export default function Welcome() {
     const { auth } = usePage<SharedData>().props;
+    
 
-    // Menambahkan kelas 'loaded' setelah komponen di-mount untuk memicu animasi
-    // Anda dapat menggunakan useEffect untuk ini jika diperlukan untuk timing yang lebih kompleks
     return (
         <>
             <Head title="Sistem Validasi Data">

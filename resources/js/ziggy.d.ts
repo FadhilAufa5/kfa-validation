@@ -32,6 +32,10 @@ declare module 'ziggy-js' {
     "pembelian.retur": [],
     "pembelian.urgent": [],
     "users.index": [],
+    "users.store": [],           // ✅ Tambahkan ini
+    "users.show": [],
+    "users.update": [],
+    "users.check-email": [],     // ✅ Tambahkan ini
     "profile.edit": [],
     "profile.update": [],
     "profile.destroy": [],
@@ -44,30 +48,30 @@ declare module 'ziggy-js' {
     "password.request": [],
     "password.email": [],
     "password.reset": [
-        {
-            "name": "token",
-            "required": true
-        }
+      {
+        "name": "token",
+        "required": true
+      }
     ],
     "password.store": [],
     "verification.notice": [],
     "verification.verify": [
-        {
-            "name": "id",
-            "required": true
-        },
-        {
-            "name": "hash",
-            "required": true
-        }
+      {
+        "name": "id",
+        "required": true
+      },
+      {
+        "name": "hash",
+        "required": true
+      }
     ],
     "verification.send": [],
     "storage.local": [
-        {
-            "name": "path",
-            "required": true
-        }
+      {
+        "name": "path",
+        "required": true
+      }
     ]
-}
+  }
 }
 export {};

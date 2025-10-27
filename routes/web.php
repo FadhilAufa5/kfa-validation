@@ -41,7 +41,7 @@ Route::post('/pembelian/store-reguler', [PembelianController::class, 'storeRegul
 Route::post('/pembelian/store-retur', [PembelianController::class, 'storeRetur'])->name('pembelian.store-retur');
 Route::post('/pembelian/store-urgent', [PembelianController::class, 'storeUrgent'])->name('pembelian.store-urgent');
 
-Route::post('/pembelian/save-{type}', [PembelianController::class, 'save'])
+Route::post('/pembelian/save/{type}', [PembelianController::class, 'save'])
     ->name('pembelian.save');
 
 // Add route for validation
@@ -76,6 +76,11 @@ Route::get('pembelian/{id}/matched-records', [PembelianController::class, 'getMa
 
 // user management 
 Route::get('/users', [UsersController::class, 'index'])->name('users.index');
+Route::get('/users/{id}', [UsersController::class, 'show'])->name('users.show');
+Route::put('/users/{user}', [UsersController::class, 'update'])->name('users.update');
+Route::post('/users', [UsersController::class, 'store'])->name('users.store');
+Route::post('/users/check-email', [UsersController::class, 'checkEmail'])->name('users.check-email');
+Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
 
 
 
