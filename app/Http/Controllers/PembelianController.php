@@ -792,16 +792,198 @@ class PembelianController extends Controller
             'isValid' => $validation->mismatched_records === 0,
         ];
 
-        // Add validation details if they exist
-        if ($validation->validation_details) {
-            $validationData = array_merge($validationData, $validation->validation_details);
-        }
-
+        // Only return basic validation data here, not the full details
+        // The details will be loaded separately via new API endpoints
 
         return Inertia::render('pembelian/show', [
             'validationId' => $id,
             'validationData' => $validationData,
         ]);
+    }
+    
+    /**
+     * Get paginated invalid groups data
+     */
+    public function getInvalidGroups($id, Request $request)
+    {
+        $validation = \App\Models\Validation::find($id);
+
+        if (!$validation) {
+            return response()->json(['error' => 'Validation data not found'], 404);
+        }
+
+        $invalidGroups = $validation->validation_details['invalid_groups'] ?? [];
+        
+        // Convert to array format for easier processing
+        $items = [];
+        foreach ($invalidGroups as $key => $group) {
+            $items[] = array_merge(['key' => $key], $group, [
+                // Determine source label for filtering
+                'sourceLabel' => $this->getSourceLabel($group),
+            ]);
+        }
+        
+        // Get request parameters for filtering and pagination
+        $searchTerm = $request->input('search', '');
+        $categoryFilter = $request->input('category', '');
+        $sourceFilter = $request->input('source', '');
+        $sortKey = $request->input('sort_key', 'key');
+        $sortDirection = $request->input('sort_direction', 'asc');
+        $page = $request->input('page', 1);
+        $perPage = $request->input('per_page', 10);
+
+        // Apply search filter - search in the 'key' field (Kunci column)
+        if ($searchTerm) {
+            $items = array_filter($items, function($item) use ($searchTerm) {
+                return stripos($item['key'], $searchTerm) !== false;
+            });
+        }
+
+        // Apply category filter
+        if ($categoryFilter) {
+            $items = array_filter($items, function($item) use ($categoryFilter) {
+                return $item['discrepancy_category'] === $categoryFilter;
+            });
+        }
+
+        // Apply source filter
+        if ($sourceFilter) {
+            $items = array_filter($items, function($item) use ($sourceFilter) {
+                return $item['sourceLabel'] === $sourceFilter;
+            });
+        }
+
+        // Apply sorting
+        if ($sortKey && $sortDirection) {
+            usort($items, function($a, $b) use ($sortKey, $sortDirection) {
+                $aValue = $a[$sortKey] ?? null;
+                $bValue = $b[$sortKey] ?? null;
+                
+                // Handle comparison based on data type
+                if (is_string($aValue) && is_string($bValue)) {
+                    $result = strcasecmp($aValue, $bValue);
+                } else {
+                    $result = $aValue <=> $bValue;
+                }
+                
+                return $sortDirection === 'desc' ? -$result : $result;
+            });
+        }
+
+        // Calculate pagination
+        $totalItems = count($items);
+        $offset = ($page - 1) * $perPage;
+        $paginatedItems = array_slice($items, $offset, $perPage);
+
+        return response()->json([
+            'data' => $paginatedItems,
+            'pagination' => [
+                'current_page' => (int) $page,
+                'per_page' => (int) $perPage,
+                'total' => $totalItems,
+                'total_pages' => ceil($totalItems / $perPage),
+            ],
+            'filters' => [
+                'search' => $searchTerm,
+                'category' => $categoryFilter,
+                'source' => $sourceFilter,
+            ],
+            'sort' => [
+                'key' => $sortKey,
+                'direction' => $sortDirection,
+            ],
+        ]);
+    }
+    
+    /**
+     * Get paginated matched records data
+     */
+    public function getMatchedRecords($id, Request $request)
+    {
+        $validation = \App\Models\Validation::find($id);
+
+        if (!$validation) {
+            return response()->json(['error' => 'Validation data not found'], 404);
+        }
+
+        $matchedRows = $validation->validation_details['matched_rows'] ?? [];
+        
+        // Get request parameters for filtering and pagination
+        $searchTerm = $request->input('search', '');
+        $sortKey = $request->input('sort_key', 'row_index');
+        $sortDirection = $request->input('sort_direction', 'asc');
+        $page = $request->input('page', 1);
+        $perPage = $request->input('per_page', 10);
+
+        // Apply search filter - search in multiple fields
+        if ($searchTerm) {
+            $matchedRows = array_filter($matchedRows, function($item) use ($searchTerm) {
+                return stripos($item['key_value'] ?? '', $searchTerm) !== false ||
+                       stripos((string)($item['row_index'] ?? ''), $searchTerm) !== false ||
+                       stripos((string)($item['validation_source_total'] ?? ''), $searchTerm) !== false ||
+                       stripos((string)($item['uploaded_total'] ?? ''), $searchTerm) !== false;
+            });
+        }
+
+        // Apply sorting
+        if ($sortKey && $sortDirection) {
+            usort($matchedRows, function($a, $b) use ($sortKey, $sortDirection) {
+                $aValue = $a[$sortKey] ?? null;
+                $bValue = $b[$sortKey] ?? null;
+                
+                // Handle comparison based on data type
+                if (is_string($aValue) && is_string($bValue)) {
+                    $result = strcasecmp($aValue, $bValue);
+                } else {
+                    $result = $aValue <=> $bValue;
+                }
+                
+                return $sortDirection === 'desc' ? -$result : $result;
+            });
+        }
+
+        // Calculate pagination
+        $totalItems = count($matchedRows);
+        $offset = ($page - 1) * $perPage;
+        $paginatedItems = array_slice($matchedRows, $offset, $perPage);
+
+        return response()->json([
+            'data' => $paginatedItems,
+            'pagination' => [
+                'current_page' => (int) $page,
+                'per_page' => (int) $perPage,
+                'total' => $totalItems,
+                'total_pages' => ceil($totalItems / $perPage),
+            ],
+            'filters' => [
+                'search' => $searchTerm,
+            ],
+            'sort' => [
+                'key' => $sortKey,
+                'direction' => $sortDirection,
+            ],
+        ]);
+    }
+    
+    /**
+     * Helper method to determine source label for filtering
+     */
+    private function getSourceLabel($group)
+    {
+        // Determine if discrepancy is from validation or uploaded file
+        $isFromValidation = $group['source_total'] > $group['uploaded_total'] && $group['discrepancy_value'] < 0;
+        $isFromUploaded = $group['uploaded_total'] > $group['source_total'] && $group['discrepancy_value'] > 0;
+        $isKeyNotFound = $group['discrepancy_category'] === 'im_invalid';
+
+        if ($isKeyNotFound) {
+            return 'Tidak Ditemukan di Sumber';
+        } else if ($isFromUploaded) {
+            return 'File Diupload';
+        } else if ($isFromValidation) {
+            return 'File Sumber';
+        } else {
+            return 'Tidak Diketahui';
+        }
     }
 }
 

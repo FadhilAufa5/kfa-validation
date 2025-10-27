@@ -71,6 +71,8 @@ Route::post('/pembelian/process/{filename}', [PembelianController::class, 'proce
     ->name('pembelian.processWithHeader');
 
 Route::get('pembelian/{id}', [PembelianController::class, 'show'])->name('pembelian.show');
+Route::get('pembelian/{id}/invalid-groups', [PembelianController::class, 'getInvalidGroups'])->name('pembelian.invalid-groups');
+Route::get('pembelian/{id}/matched-records', [PembelianController::class, 'getMatchedRecords'])->name('pembelian.matched-records');
 
 // user management 
 Route::get('/users', [UsersController::class, 'index'])->name('users.index');
