@@ -3,7 +3,23 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+    Pagination,
+    PaginationContent,
+    PaginationEllipsis,
+    PaginationItem,
+    PaginationLink,
+    PaginationNext,
+    PaginationPrevious,
+} from '@/components/ui/pagination';
 import {
     Select,
     SelectContent,
@@ -20,17 +36,8 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-    Pagination,
-    PaginationContent,
-    PaginationEllipsis,
-    PaginationItem,
-    PaginationLink,
-    PaginationNext,
-    PaginationPrevious,
-} from '@/components/ui/pagination';
 import AppLayout from '@/layouts/app-layout';
-import { cn, debounce } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
@@ -46,8 +53,8 @@ import {
 } from 'lucide-react';
 import React from 'react';
 
-import { useMemo, useState, useEffect } from 'react';
 import axios from 'axios';
+import { useEffect, useMemo, useState } from 'react';
 
 interface ValidationGroup {
     discrepancy_category: string;
@@ -110,6 +117,10 @@ interface PaginationData<T> {
         key: string;
         direction: 'asc' | 'desc';
     };
+    uniqueFilters?: {
+        categories: string[];
+        sources: string[];
+    };
 }
 
 type ValidationPageProps = {
@@ -124,7 +135,7 @@ export default function PembelianShow() {
     const breadcrumbs = useMemo(
         () => [
             { title: 'Pembelian', href: '/pembelian' },
-            { title: 'History Pembelian', href: '/historypembelian' },
+            { title: 'History Pembelian', href: '/history/pembelian' },
             { title: `Detail Validasi #${validationId}`, href: '#' },
         ],
         [validationId],
@@ -140,7 +151,8 @@ export default function PembelianShow() {
     }>({ key: 'key', direction: 'asc' });
     const [currentPageInvalid, setCurrentPageInvalid] = useState(1);
     const [itemsPerPageInvalid, setItemsPerPageInvalid] = useState(10);
-    const [invalidGroupsData, setInvalidGroupsData] = useState<PaginationData<ValidationGroupPaginated> | null>(null);
+    const [invalidGroupsData, setInvalidGroupsData] =
+        useState<PaginationData<ValidationGroupPaginated> | null>(null);
     const [invalidGroupsLoading, setInvalidGroupsLoading] = useState(false);
 
     // State for matched records table controls
@@ -151,8 +163,18 @@ export default function PembelianShow() {
     }>({ key: 'row_index', direction: 'asc' });
     const [currentPageMatched, setCurrentPageMatched] = useState(1);
     const [itemsPerPageMatched, setItemsPerPageMatched] = useState(10);
-    const [matchedRecordsData, setMatchedRecordsData] = useState<PaginationData<MatchedRowPaginated> | null>(null);
+    const [matchedRecordsData, setMatchedRecordsData] =
+        useState<PaginationData<MatchedRowPaginated> | null>(null);
     const [matchedRecordsLoading, setMatchedRecordsLoading] = useState(false);
+
+    // State for document comparison popup
+    const [isPopupOpen, setIsPopupOpen] = useState(false);
+    const [selectedKey, setSelectedKey] = useState('');
+    const [uploadedDocData, setUploadedDocData] = useState<any[] | null>(null);
+    const [validationDocData, setValidationDocData] = useState<any[] | null>(
+        null,
+    );
+    const [popupLoading, setPopupLoading] = useState(false);
 
     // Loading state jika data belum ada
     if (!validationData) {
@@ -193,7 +215,7 @@ export default function PembelianShow() {
             },
             {
                 title: 'Total Mismatched Records',
-                value: validationData.mismatched,
+                value: validationData.mismatched.toLocaleString('id-ID'),
                 icon: FileX2,
                 color:
                     validationData.mismatched > 0
@@ -214,17 +236,20 @@ export default function PembelianShow() {
         const fetchInvalidGroups = async () => {
             setInvalidGroupsLoading(true);
             try {
-                const response = await axios.get(`/pembelian/${validationId}/invalid-groups`, {
-                    params: {
-                        search: searchTerm,
-                        category: categoryFilter,
-                        source: sourceFilter,
-                        sort_key: sortConfigInvalid.key,
-                        sort_direction: sortConfigInvalid.direction,
-                        page: currentPageInvalid,
-                        per_page: itemsPerPageInvalid,
+                const response = await axios.get(
+                    `/pembelian/${validationId}/invalid-groups`,
+                    {
+                        params: {
+                            search: searchTerm,
+                            category: categoryFilter,
+                            source: sourceFilter,
+                            sort_key: sortConfigInvalid.key,
+                            sort_direction: sortConfigInvalid.direction,
+                            page: currentPageInvalid,
+                            per_page: itemsPerPageInvalid,
+                        },
                     },
-                });
+                );
                 setInvalidGroupsData(response.data);
             } catch (error) {
                 console.error('Error fetching invalid groups:', error);
@@ -234,22 +259,33 @@ export default function PembelianShow() {
         };
 
         fetchInvalidGroups();
-    }, [validationId, searchTerm, categoryFilter, sourceFilter, sortConfigInvalid, currentPageInvalid, itemsPerPageInvalid]);
+    }, [
+        validationId,
+        searchTerm,
+        categoryFilter,
+        sourceFilter,
+        sortConfigInvalid,
+        currentPageInvalid,
+        itemsPerPageInvalid,
+    ]);
 
     // Load matched records with pagination
     useEffect(() => {
         const fetchMatchedRecords = async () => {
             setMatchedRecordsLoading(true);
             try {
-                const response = await axios.get(`/pembelian/${validationId}/matched-records`, {
-                    params: {
-                        search: matchedSearchTerm,
-                        sort_key: sortConfigMatched.key,
-                        sort_direction: sortConfigMatched.direction,
-                        page: currentPageMatched,
-                        per_page: itemsPerPageMatched,
+                const response = await axios.get(
+                    `/pembelian/${validationId}/matched-records`,
+                    {
+                        params: {
+                            search: matchedSearchTerm,
+                            sort_key: sortConfigMatched.key,
+                            sort_direction: sortConfigMatched.direction,
+                            page: currentPageMatched,
+                            per_page: itemsPerPageMatched,
+                        },
                     },
-                });
+                );
                 setMatchedRecordsData(response.data);
             } catch (error) {
                 console.error('Error fetching matched records:', error);
@@ -259,23 +295,19 @@ export default function PembelianShow() {
         };
 
         fetchMatchedRecords();
-    }, [validationId, matchedSearchTerm, sortConfigMatched, currentPageMatched, itemsPerPageMatched]);
+    }, [
+        validationId,
+        matchedSearchTerm,
+        sortConfigMatched,
+        currentPageMatched,
+        itemsPerPageMatched,
+    ]);
 
-    // Get unique categories for filter dropdown (from the first load of data)
-    const uniqueCategories = invalidGroupsData ? Array.from(
-        new Set(
-            invalidGroupsData.data.map(
-                (g) => g.discrepancy_category,
-            ),
-        ),
-    ) : [];
+    // Get unique categories for filter dropdown (from backend)
+    const uniqueCategories = invalidGroupsData?.uniqueFilters?.categories || [];
 
-    // Get unique source labels for filter dropdown (from the first load of data)
-    const uniqueSources = invalidGroupsData ? Array.from(
-        new Set(
-            invalidGroupsData.data.map((group) => group.sourceLabel),
-        ),
-    ) : [];
+    // Get unique source labels for filter dropdown (from backend)
+    const uniqueSources = invalidGroupsData?.uniqueFilters?.sources || [];
 
     // Handle sort request for invalid groups
     const requestSortInvalid = (key: string) => {
@@ -315,6 +347,67 @@ export default function PembelianShow() {
         return sortConfigMatched.direction === 'asc' ? '↑' : '↓';
     };
 
+    // Handler for clicking on key column
+    const handleKeyClick = async (key: string) => {
+        setSelectedKey(key);
+        setIsPopupOpen(true);
+        setPopupLoading(true);
+        setUploadedDocData(null);
+        setValidationDocData(null);
+
+        try {
+            // Fetch both documents in parallel
+            const [uploadedResponse, validationResponse] = await Promise.all([
+                axios.get(`/pembelian/${validationId}/document-comparison`, {
+                    params: { key, type: 'uploaded' },
+                }),
+                axios.get(`/pembelian/${validationId}/document-comparison`, {
+                    params: { key, type: 'validation' },
+                }),
+            ]);
+
+            console.log('Server Payload (Uploaded):', uploadedResponse.data);
+            console.log(
+                'Server Payload (Validation):',
+                validationResponse.data,
+            );
+
+            // Defensively extract the data array from the server's response body.
+            // This handles two cases:
+            // 1. The response is { ..., data: [...] } -> We use response.data.data
+            // 2. The response is [...] directly -> We use response.data
+            const extractedUploadedData =
+                uploadedResponse.data?.data || uploadedResponse.data;
+            const extractedValidationData =
+                validationResponse.data?.data || validationResponse.data;
+
+            // Ensure we are setting an array to the state to prevent render errors.
+            if (Array.isArray(extractedUploadedData)) {
+                setUploadedDocData(extractedUploadedData);
+            } else {
+                console.error(
+                    'Extracted uploaded data is not an array:',
+                    extractedUploadedData,
+                );
+                setUploadedDocData([]); // Set empty array on failure
+            }
+
+            if (Array.isArray(extractedValidationData)) {
+                setValidationDocData(extractedValidationData);
+            } else {
+                console.error(
+                    'Extracted validation data is not an array:',
+                    extractedValidationData,
+                );
+                setValidationDocData([]); // Set empty array on failure
+            }
+        } catch (error) {
+            console.error('Error fetching document data:', error);
+        } finally {
+            setPopupLoading(false);
+        }
+    };
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Detail Validasi #${validationId}`} />
@@ -341,7 +434,7 @@ export default function PembelianShow() {
                             </Badge>
                         </div>
                     </div>
-                    <Link href="/pembelian/history">
+                    <Link href="/history/pembelian">
                         <Button variant="outline" className="w-full sm:w-auto">
                             <ArrowLeft className="mr-2 h-4 w-4" />
                             Kembali ke History
@@ -408,16 +501,15 @@ export default function PembelianShow() {
                 </div>
 
                 {/* Tabs for Invalid and Valid Groups */}
-                {(validationData.mismatched && validationData.mismatched > 0) ||
-                (validationData.matched && validationData.matched > 0) ? (
+                {validationData.mismatched > 0 || validationData.matched > 0 ? (
                     <Tabs defaultValue="invalid" className="w-full">
                         <TabsList className="grid w-full grid-cols-2">
-                            {validationData.mismatched && validationData.mismatched > 0 && (
+                            {validationData.mismatched > 0 && (
                                 <TabsTrigger value="invalid">
                                     Data Tidak Valid
                                 </TabsTrigger>
                             )}
-                            {validationData.matched && validationData.matched > 0 && (
+                            {validationData.matched > 0 && (
                                 <TabsTrigger value="valid">
                                     Data Valid (Matched)
                                 </TabsTrigger>
@@ -425,11 +517,8 @@ export default function PembelianShow() {
                         </TabsList>
 
                         {/* Invalid Groups Tab */}
-                        {validationData.mismatched && validationData.mismatched > 0 && (
-                            <TabsContent
-                                value="invalid"
-                                className="space-y-4"
-                            >
+                        {validationData.mismatched > 0 && (
+                            <TabsContent value="invalid" className="space-y-4">
                                 <InvalidGroupsTabContent
                                     uniqueCategories={uniqueCategories}
                                     uniqueSources={uniqueSources}
@@ -448,20 +537,22 @@ export default function PembelianShow() {
                                     setCurrentPage={setCurrentPageInvalid}
                                     itemsPerPage={itemsPerPageInvalid}
                                     setItemsPerPage={setItemsPerPageInvalid}
-                                    totalPages={invalidGroupsData?.pagination.total_pages || 1}
-                                    totalItems={invalidGroupsData?.pagination.total || 0}
+                                    totalPages={
+                                        invalidGroupsData?.pagination
+                                            .total_pages || 1
+                                    }
+                                    totalItems={
+                                        invalidGroupsData?.pagination.total || 0
+                                    }
                                     loading={invalidGroupsLoading}
-                                    sortConfig={sortConfigInvalid}
+                                    handleKeyClick={handleKeyClick}
                                 />
                             </TabsContent>
                         )}
 
                         {/* Matched Records Tab */}
-                        {validationData.matched && validationData.matched > 0 && (
-                            <TabsContent
-                                value="valid"
-                                className="space-y-4"
-                            >
+                        {validationData.matched > 0 && (
+                            <TabsContent value="valid" className="space-y-4">
                                 <MatchedRecordsTabContent
                                     filteredAndSortedMatchedRecords={
                                         matchedRecordsData?.data || []
@@ -476,10 +567,16 @@ export default function PembelianShow() {
                                     setCurrentPage={setCurrentPageMatched}
                                     itemsPerPage={itemsPerPageMatched}
                                     setItemsPerPage={setItemsPerPageMatched}
-                                    totalPages={matchedRecordsData?.pagination.total_pages || 1}
-                                    totalItems={matchedRecordsData?.pagination.total || 0}
+                                    totalPages={
+                                        matchedRecordsData?.pagination
+                                            .total_pages || 1
+                                    }
+                                    totalItems={
+                                        matchedRecordsData?.pagination.total ||
+                                        0
+                                    }
                                     loading={matchedRecordsLoading}
-                                    sortConfig={sortConfigMatched}
+                                    handleKeyClick={handleKeyClick}
                                 />
                             </TabsContent>
                         )}
@@ -489,6 +586,16 @@ export default function PembelianShow() {
                         Tidak ada data untuk ditampilkan
                     </div>
                 )}
+
+                {/* Document Comparison Popup */}
+                <DocumentComparisonPopup
+                    isOpen={isPopupOpen}
+                    onClose={() => setIsPopupOpen(false)}
+                    uploadedData={uploadedDocData}
+                    validationData={validationDocData}
+                    connectorKey={selectedKey}
+                    isLoading={popupLoading}
+                />
             </div>
         </AppLayout>
     );
@@ -515,7 +622,7 @@ const InvalidGroupsTabContent = React.memo(
         totalPages,
         totalItems,
         loading,
-        sortConfig,
+        handleKeyClick,
     }: {
         uniqueCategories: string[];
         uniqueSources: string[];
@@ -525,7 +632,7 @@ const InvalidGroupsTabContent = React.memo(
         setSourceFilter: (value: string) => void;
         searchTerm: string;
         setSearchTerm: (value: string) => void;
-        filteredAndSortedInvalidGroups: any[];
+        filteredAndSortedInvalidGroups: ValidationGroupPaginated[];
         requestSort: (key: string) => void;
         getSortIndicator: (key: string) => string | null;
         currentPage: number;
@@ -535,7 +642,7 @@ const InvalidGroupsTabContent = React.memo(
         totalPages: number;
         totalItems: number;
         loading: boolean;
-        sortConfig: { key: string; direction: 'asc' | 'desc' };
+        handleKeyClick: (key: string) => void;
     }) => (
         <div className="space-y-4">
             {/* Search and Filter Controls */}
@@ -600,9 +707,11 @@ const InvalidGroupsTabContent = React.memo(
 
             <h3 className="text-lg font-semibold">Grup Data Tidak Valid:</h3>
             {loading ? (
-                <div className="flex justify-center items-center py-8">
+                <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-muted-foreground">Memuat data...</span>
+                    <span className="ml-2 text-muted-foreground">
+                        Memuat data...
+                    </span>
                 </div>
             ) : (
                 <>
@@ -623,32 +732,43 @@ const InvalidGroupsTabContent = React.memo(
                                         }
                                     >
                                         Kategori Diskrepansi{' '}
-                                        {getSortIndicator('discrepancy_category')}
+                                        {getSortIndicator(
+                                            'discrepancy_category',
+                                        )}
                                     </TableHead>
                                     <TableHead>Error</TableHead>
                                     <TableHead
                                         className="cursor-pointer"
-                                        onClick={() => requestSort('uploaded_total')}
+                                        onClick={() =>
+                                            requestSort('uploaded_total')
+                                        }
                                     >
                                         Total Diupload{' '}
                                         {getSortIndicator('uploaded_total')}
                                     </TableHead>
                                     <TableHead
                                         className="cursor-pointer"
-                                        onClick={() => requestSort('source_total')}
+                                        onClick={() =>
+                                            requestSort('source_total')
+                                        }
                                     >
-                                        Total Sumber {getSortIndicator('source_total')}
+                                        Total Sumber{' '}
+                                        {getSortIndicator('source_total')}
                                     </TableHead>
                                     <TableHead
                                         className="cursor-pointer"
-                                        onClick={() => requestSort('discrepancy_value')}
+                                        onClick={() =>
+                                            requestSort('discrepancy_value')
+                                        }
                                     >
                                         Nilai Diskrepansi{' '}
                                         {getSortIndicator('discrepancy_value')}
                                     </TableHead>
                                     <TableHead
                                         className="cursor-pointer"
-                                        onClick={() => requestSort('sourceLabel')}
+                                        onClick={() =>
+                                            requestSort('sourceLabel')
+                                        }
                                     >
                                         Sumber Diskrepansi{' '}
                                         {getSortIndicator('sourceLabel')}
@@ -659,7 +779,12 @@ const InvalidGroupsTabContent = React.memo(
                                 {filteredAndSortedInvalidGroups.map(
                                     ({ key, ...group }) => (
                                         <TableRow key={key}>
-                                            <TableCell className="font-medium">
+                                            <TableCell
+                                                className="cursor-pointer font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                                                onClick={() =>
+                                                    handleKeyClick(key)
+                                                }
+                                            >
                                                 {key}
                                             </TableCell>
                                             <TableCell>
@@ -669,11 +794,15 @@ const InvalidGroupsTabContent = React.memo(
                                             <TableCell>
                                                 {group.uploaded_total}
                                             </TableCell>
-                                            <TableCell>{group.source_total}</TableCell>
+                                            <TableCell>
+                                                {group.source_total}
+                                            </TableCell>
                                             <TableCell>
                                                 {group.discrepancy_value}
                                             </TableCell>
-                                            <TableCell>{group.sourceLabel}</TableCell>
+                                            <TableCell>
+                                                {group.sourceLabel}
+                                            </TableCell>
                                         </TableRow>
                                     ),
                                 )}
@@ -682,9 +811,15 @@ const InvalidGroupsTabContent = React.memo(
                     </div>
 
                     {/* Pagination Controls */}
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
                         <div className="text-sm text-muted-foreground">
-                            Menampilkan {Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)} - {Math.min(currentPage * itemsPerPage, totalItems)} dari {totalItems} data
+                            Menampilkan{' '}
+                            {Math.min(
+                                (currentPage - 1) * itemsPerPage + 1,
+                                totalItems,
+                            )}{' '}
+                            - {Math.min(currentPage * itemsPerPage, totalItems)}{' '}
+                            dari {totalItems} data
                         </div>
                         <div className="flex items-center gap-2">
                             <Select
@@ -699,7 +834,10 @@ const InvalidGroupsTabContent = React.memo(
                                 </SelectTrigger>
                                 <SelectContent>
                                     {[5, 10, 20, 50].map((size) => (
-                                        <SelectItem key={size} value={size.toString()}>
+                                        <SelectItem
+                                            key={size}
+                                            value={size.toString()}
+                                        >
                                             {size}
                                         </SelectItem>
                                     ))}
@@ -713,62 +851,139 @@ const InvalidGroupsTabContent = React.memo(
                             <PaginationContent>
                                 <PaginationItem>
                                     <PaginationPrevious
-                                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                        onClick={() =>
+                                            setCurrentPage((prev: number) =>
+                                                Math.max(prev - 1, 1),
+                                            )
+                                        }
                                         disabled={currentPage === 1}
                                     />
                                 </PaginationItem>
 
-                                {currentPage > 2 && (
+                                {/* ... (Pagination logic remains unchanged) ... */}
+                                <PaginationItem>
+                                    <PaginationLink
+                                        onClick={() => setCurrentPage(1)}
+                                        isActive={currentPage === 1}
+                                    >
+                                        1
+                                    </PaginationLink>
+                                </PaginationItem>
+
+                                {totalPages > 1 &&
+                                    (() => {
+                                        if (totalPages <= 5) {
+                                            return Array.from(
+                                                { length: totalPages - 2 },
+                                                (_, i) => {
+                                                    const pageNum = i + 2;
+                                                    return (
+                                                        <PaginationItem
+                                                            key={pageNum}
+                                                        >
+                                                            <PaginationLink
+                                                                onClick={() =>
+                                                                    setCurrentPage(
+                                                                        pageNum,
+                                                                    )
+                                                                }
+                                                                isActive={
+                                                                    currentPage ===
+                                                                    pageNum
+                                                                }
+                                                            >
+                                                                {pageNum}
+                                                            </PaginationLink>
+                                                        </PaginationItem>
+                                                    );
+                                                },
+                                            );
+                                        } else {
+                                            const pages = [];
+                                            let startPage = Math.max(
+                                                2,
+                                                currentPage - 1,
+                                            );
+                                            let endPage = Math.min(
+                                                totalPages - 1,
+                                                currentPage + 1,
+                                            );
+                                            if (currentPage <= 2) {
+                                                startPage = 2;
+                                                endPage = 4;
+                                            } else if (
+                                                currentPage >=
+                                                totalPages - 1
+                                            ) {
+                                                startPage = totalPages - 3;
+                                                endPage = totalPages - 1;
+                                            }
+                                            if (startPage > 2) {
+                                                pages.push(
+                                                    <PaginationItem key="ellipsis-start">
+                                                        <PaginationEllipsis />
+                                                    </PaginationItem>,
+                                                );
+                                            }
+                                            for (
+                                                let i = startPage;
+                                                i <= endPage;
+                                                i++
+                                            ) {
+                                                if (
+                                                    i !== 1 &&
+                                                    i !== totalPages
+                                                ) {
+                                                    pages.push(
+                                                        <PaginationItem key={i}>
+                                                            <PaginationLink
+                                                                onClick={() =>
+                                                                    setCurrentPage(
+                                                                        i,
+                                                                    )
+                                                                }
+                                                                isActive={
+                                                                    currentPage ===
+                                                                    i
+                                                                }
+                                                            >
+                                                                {i}
+                                                            </PaginationLink>
+                                                        </PaginationItem>,
+                                                    );
+                                                }
+                                            }
+                                            if (endPage < totalPages - 1) {
+                                                pages.push(
+                                                    <PaginationItem key="ellipsis-end">
+                                                        <PaginationEllipsis />
+                                                    </PaginationItem>,
+                                                );
+                                            }
+                                            return pages;
+                                        }
+                                    })()}
+                                {totalPages > 1 && (
                                     <PaginationItem>
-                                        <PaginationLink onClick={() => setCurrentPage(1)}>
-                                            1
-                                        </PaginationLink>
-                                    </PaginationItem>
-                                )}
-
-                                {currentPage > 3 && (
-                                    <PaginationItem>
-                                        <PaginationEllipsis />
-                                    </PaginationItem>
-                                )}
-
-                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                    const startPage = Math.max(1, currentPage - 2);
-                                    const endPage = Math.min(totalPages, startPage + 4);
-                                    const pageNum = Math.min(startPage + i, endPage);
-
-                                    if (pageNum >= 1 && pageNum <= totalPages) {
-                                        return (
-                                            <PaginationItem key={pageNum}>
-                                                <PaginationLink
-                                                    onClick={() => setCurrentPage(pageNum)}
-                                                    isActive={currentPage === pageNum}
-                                                >
-                                                    {pageNum}
-                                                </PaginationLink>
-                                            </PaginationItem>
-                                        );
-                                    }
-                                    return null;
-                                })}
-
-                                {currentPage < totalPages - 2 && (
-                                    <PaginationItem>
-                                        <PaginationEllipsis />
-                                    </PaginationItem>
-                                )}
-
-                                {currentPage < totalPages - 1 && (
-                                    <PaginationItem>
-                                        <PaginationLink onClick={() => setCurrentPage(totalPages)}>
+                                        <PaginationLink
+                                            onClick={() =>
+                                                setCurrentPage(totalPages)
+                                            }
+                                            isActive={
+                                                currentPage === totalPages
+                                            }
+                                        >
                                             {totalPages}
                                         </PaginationLink>
                                     </PaginationItem>
                                 )}
-
                                 <PaginationItem>
                                     <PaginationNext
-                                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                        onClick={() =>
+                                            setCurrentPage((prev: number) =>
+                                                Math.min(prev + 1, totalPages),
+                                            )
+                                        }
                                         disabled={currentPage === totalPages}
                                     />
                                 </PaginationItem>
@@ -779,6 +994,191 @@ const InvalidGroupsTabContent = React.memo(
             )}
         </div>
     ),
+);
+
+// Helper function to render document data, robustly handling different formats.
+const renderDocumentData = (data: any[] | null) => {
+    if (!data || data.length === 0) {
+        return (
+            <div className="py-8 text-center text-muted-foreground">
+                Tidak ada data ditemukan
+            </div>
+        );
+    }
+
+    let headers: string[] = [];
+    let dataRows: any[] = [];
+    // Check if the first element is an object but not an array (handles array of objects)
+    const isArrayOfObjects =
+        typeof data[0] === 'object' &&
+        data[0] !== null &&
+        !Array.isArray(data[0]);
+
+    if (isArrayOfObjects) {
+        // Data format: [{ header1: valueA, header2: valueB }, ...]
+        headers = Object.keys(data[0]);
+        dataRows = data; // Use the entire array as data rows
+    } else if (Array.isArray(data[0])) {
+        // Data format: [ [header1, header2], [valueA, valueB], ... ]
+        // We assume the first row is the header
+        headers = data[0].map(String); // Ensure all headers are strings
+        dataRows = data.slice(1);
+    } else {
+        // Fallback for unexpected or unsupported formats
+        return (
+            <div className="py-8 text-center text-muted-foreground">
+                Format data tidak dapat ditampilkan.
+            </div>
+        );
+    }
+
+    if (dataRows.length === 0) {
+        return (
+            <div className="py-8 text-center text-muted-foreground">
+                Tidak ada baris data yang cocok ditemukan.
+            </div>
+        );
+    }
+
+    // FIXED: Removed max-h and overflow-y-auto from this div
+    return (
+        <div className="space-y-3">
+            <div className="mb-2 text-sm font-medium text-muted-foreground">
+                Total: {dataRows.length} baris data ditemukan
+            </div>
+            {dataRows.map((row, rowIndex) => (
+                <div
+                    key={rowIndex}
+                    className="space-y-2 rounded-lg border bg-white p-3 shadow-sm dark:bg-gray-800"
+                >
+                    <div className="mb-2 text-sm font-semibold text-blue-600 dark:text-blue-400">
+                        Baris Data {rowIndex + 1}
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {headers.map((header, colIndex) => {
+                            const value = isArrayOfObjects
+                                ? row[header]
+                                : row[colIndex];
+                            return (
+                                <div
+                                    key={`${header}-${colIndex}`}
+                                    className="flex flex-col rounded border-l-2 border-blue-400 bg-gray-50 p-2 text-sm dark:bg-gray-700"
+                                >
+                                    <span className="mb-1 text-xs font-semibold text-gray-600 uppercase dark:text-gray-400">
+                                        {header}
+                                    </span>
+                                    <span className="font-medium break-all text-gray-900 dark:text-gray-100">
+                                        {value !== null && value !== undefined
+                                            ? String(value)
+                                            : '-'}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+// Document Comparison Popup Component (Refactored)
+const DocumentComparisonPopup = React.memo(
+    ({
+        isOpen,
+        onClose,
+        uploadedDocData,
+        validationDocData,
+        connectorKey,
+        isLoading,
+    }: {
+        isOpen: boolean;
+        onClose: () => void;
+        uploadedDocData: any[] | null;
+        validationDocData: any[] | null;
+        connectorKey: string;
+        isLoading: boolean;
+    }) => {
+        // Calculate totals if data is available
+        const uploadedCount = uploadedDocData
+            ? Array.isArray(uploadedDocData[0])
+                ? uploadedDocData.length - 1
+                : uploadedDocData.length
+            : 0;
+        const validationCount = validationDocData
+            ? Array.isArray(validationDocData[0])
+                ? validationDocData.length - 1
+                : validationDocData.length
+            : 0;
+
+        return (
+            <Dialog open={isOpen} onOpenChange={onClose}>
+                <DialogContent className="max-h-[90vh] max-w-7xl overflow-hidden">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-bold">
+                            Perbandingan Dokumen
+                        </DialogTitle>
+                        <DialogDescription className="text-base">
+                            Menampilkan semua data untuk kunci:{' '}
+                            <span className="font-semibold text-blue-600">
+                                {connectorKey}
+                            </span>
+                        </DialogDescription>
+                        {!isLoading &&
+                            (uploadedCount > 0 || validationCount > 0) && (
+                                <div className="mt-2 flex gap-4 text-sm">
+                                    <Badge variant="secondary">
+                                        Uploaded: {uploadedCount} baris
+                                    </Badge>
+                                    <Badge variant="outline">
+                                        Validasi: {validationCount} baris
+                                    </Badge>
+                                </div>
+                            )}
+                    </DialogHeader>
+
+                    {isLoading ? (
+                        <div className="flex items-center justify-center py-12">
+                            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                            <span className="ml-2 text-muted-foreground">
+                                Memuat data perbandingan...
+                            </span>
+                        </div>
+                    ) : (
+                        <div className="grid h-[65vh] grid-cols-1 gap-6 lg:grid-cols-2">
+                            {/* Uploaded Document */}
+                            <Card className="flex flex-col overflow-hidden">
+                                <CardHeader className="bg-blue-50 dark:bg-blue-900/20">
+                                    <CardTitle className="flex items-center gap-2 text-lg">
+                                        <FileText className="h-5 w-5 text-blue-600" />
+                                        Dokumen Diupload
+                                    </CardTitle>
+                                </CardHeader>
+                                {/* FIXED: Made CardContent scrollable */}
+                                <CardContent className="flex-1 overflow-y-auto pt-4">
+                                    {renderDocumentData(uploadedDocData)}
+                                </CardContent>
+                            </Card>
+
+                            {/* Validation Document */}
+                            <Card className="flex flex-col overflow-hidden">
+                                <CardHeader className="bg-green-50 dark:bg-green-900/20">
+                                    <CardTitle className="flex items-center gap-2 text-lg">
+                                        <FileCheck2 className="h-5 w-5 text-green-600" />
+                                        Dokumen Validasi
+                                    </CardTitle>
+                                </CardHeader>
+                                {/* FIXED: Made CardContent scrollable */}
+                                <CardContent className="flex-1 overflow-y-auto pt-4">
+                                    {renderDocumentData(validationDocData)}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+        );
+    },
 );
 
 // Matched Records Tab Content Component
@@ -796,9 +1196,9 @@ const MatchedRecordsTabContent = React.memo(
         totalPages,
         totalItems,
         loading,
-        sortConfig,
+        handleKeyClick,
     }: {
-        filteredAndSortedMatchedRecords: any[];
+        filteredAndSortedMatchedRecords: MatchedRowPaginated[];
         matchedSearchTerm: string;
         setMatchedSearchTerm: (value: string) => void;
         requestMatchedSort: (key: string) => void;
@@ -810,7 +1210,7 @@ const MatchedRecordsTabContent = React.memo(
         totalPages: number;
         totalItems: number;
         loading: boolean;
-        sortConfig: { key: string; direction: 'asc' | 'desc' };
+        handleKeyClick: (key: string) => void;
     }) => (
         <div className="space-y-4">
             {/* Search Control for Matched Records */}
@@ -835,9 +1235,11 @@ const MatchedRecordsTabContent = React.memo(
                 Data yang Sesuai (Matched Records):
             </h3>
             {loading ? (
-                <div className="flex justify-center items-center py-8">
+                <div className="flex items-center justify-center py-8">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-muted-foreground">Memuat data...</span>
+                    <span className="ml-2 text-muted-foreground">
+                        Memuat data...
+                    </span>
                 </div>
             ) : (
                 <>
@@ -847,14 +1249,18 @@ const MatchedRecordsTabContent = React.memo(
                                 <TableRow>
                                     <TableHead
                                         className="cursor-pointer"
-                                        onClick={() => requestMatchedSort('row_index')}
+                                        onClick={() =>
+                                            requestMatchedSort('row_index')
+                                        }
                                     >
                                         Indeks Baris{' '}
                                         {getMatchedSortIndicator('row_index')}
                                     </TableHead>
                                     <TableHead
                                         className="cursor-pointer"
-                                        onClick={() => requestMatchedSort('key_value')}
+                                        onClick={() =>
+                                            requestMatchedSort('key_value')
+                                        }
                                     >
                                         Nilai Kunci{' '}
                                         {getMatchedSortIndicator('key_value')}
@@ -879,7 +1285,9 @@ const MatchedRecordsTabContent = React.memo(
                                         }
                                     >
                                         Total Diupload{' '}
-                                        {getMatchedSortIndicator('uploaded_total')}
+                                        {getMatchedSortIndicator(
+                                            'uploaded_total',
+                                        )}
                                     </TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -889,11 +1297,20 @@ const MatchedRecordsTabContent = React.memo(
                                         <TableCell className="font-medium">
                                             {row.row_index}
                                         </TableCell>
-                                        <TableCell>{row.key_value}</TableCell>
+                                        <TableCell
+                                            className="cursor-pointer text-blue-600 hover:text-blue-800 hover:underline"
+                                            onClick={() =>
+                                                handleKeyClick(row.key_value)
+                                            }
+                                        >
+                                            {row.key_value}
+                                        </TableCell>
                                         <TableCell>
                                             {row.validation_source_total}
                                         </TableCell>
-                                        <TableCell>{row.uploaded_total}</TableCell>
+                                        <TableCell>
+                                            {row.uploaded_total}
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -901,9 +1318,15 @@ const MatchedRecordsTabContent = React.memo(
                     </div>
 
                     {/* Pagination Controls */}
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
                         <div className="text-sm text-muted-foreground">
-                            Menampilkan {Math.min((currentPage - 1) * itemsPerPage + 1, totalItems)} - {Math.min(currentPage * itemsPerPage, totalItems)} dari {totalItems} data
+                            Menampilkan{' '}
+                            {Math.min(
+                                (currentPage - 1) * itemsPerPage + 1,
+                                totalItems,
+                            )}{' '}
+                            - {Math.min(currentPage * itemsPerPage, totalItems)}{' '}
+                            dari {totalItems} data
                         </div>
                         <div className="flex items-center gap-2">
                             <Select
@@ -918,7 +1341,10 @@ const MatchedRecordsTabContent = React.memo(
                                 </SelectTrigger>
                                 <SelectContent>
                                     {[5, 10, 20, 50].map((size) => (
-                                        <SelectItem key={size} value={size.toString()}>
+                                        <SelectItem
+                                            key={size}
+                                            value={size.toString()}
+                                        >
                                             {size}
                                         </SelectItem>
                                     ))}
@@ -932,62 +1358,139 @@ const MatchedRecordsTabContent = React.memo(
                             <PaginationContent>
                                 <PaginationItem>
                                     <PaginationPrevious
-                                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                        onClick={() =>
+                                            setCurrentPage((prev: number) =>
+                                                Math.max(prev - 1, 1),
+                                            )
+                                        }
                                         disabled={currentPage === 1}
                                     />
                                 </PaginationItem>
 
-                                {currentPage > 2 && (
+                                {/* ... (Pagination logic remains unchanged) ... */}
+                                <PaginationItem>
+                                    <PaginationLink
+                                        onClick={() => setCurrentPage(1)}
+                                        isActive={currentPage === 1}
+                                    >
+                                        1
+                                    </PaginationLink>
+                                </PaginationItem>
+
+                                {totalPages > 1 &&
+                                    (() => {
+                                        if (totalPages <= 5) {
+                                            return Array.from(
+                                                { length: totalPages - 2 },
+                                                (_, i) => {
+                                                    const pageNum = i + 2;
+                                                    return (
+                                                        <PaginationItem
+                                                            key={pageNum}
+                                                        >
+                                                            <PaginationLink
+                                                                onClick={() =>
+                                                                    setCurrentPage(
+                                                                        pageNum,
+                                                                    )
+                                                                }
+                                                                isActive={
+                                                                    currentPage ===
+                                                                    pageNum
+                                                                }
+                                                            >
+                                                                {pageNum}
+                                                            </PaginationLink>
+                                                        </PaginationItem>
+                                                    );
+                                                },
+                                            );
+                                        } else {
+                                            const pages = [];
+                                            let startPage = Math.max(
+                                                2,
+                                                currentPage - 1,
+                                            );
+                                            let endPage = Math.min(
+                                                totalPages - 1,
+                                                currentPage + 1,
+                                            );
+                                            if (currentPage <= 2) {
+                                                startPage = 2;
+                                                endPage = 4;
+                                            } else if (
+                                                currentPage >=
+                                                totalPages - 1
+                                            ) {
+                                                startPage = totalPages - 3;
+                                                endPage = totalPages - 1;
+                                            }
+                                            if (startPage > 2) {
+                                                pages.push(
+                                                    <PaginationItem key="ellipsis-start">
+                                                        <PaginationEllipsis />
+                                                    </PaginationItem>,
+                                                );
+                                            }
+                                            for (
+                                                let i = startPage;
+                                                i <= endPage;
+                                                i++
+                                            ) {
+                                                if (
+                                                    i !== 1 &&
+                                                    i !== totalPages
+                                                ) {
+                                                    pages.push(
+                                                        <PaginationItem key={i}>
+                                                            <PaginationLink
+                                                                onClick={() =>
+                                                                    setCurrentPage(
+                                                                        i,
+                                                                    )
+                                                                }
+                                                                isActive={
+                                                                    currentPage ===
+                                                                    i
+                                                                }
+                                                            >
+                                                                {i}
+                                                            </PaginationLink>
+                                                        </PaginationItem>,
+                                                    );
+                                                }
+                                            }
+                                            if (endPage < totalPages - 1) {
+                                                pages.push(
+                                                    <PaginationItem key="ellipsis-end">
+                                                        <PaginationEllipsis />
+                                                    </PaginationItem>,
+                                                );
+                                            }
+                                            return pages;
+                                        }
+                                    })()}
+                                {totalPages > 1 && (
                                     <PaginationItem>
-                                        <PaginationLink onClick={() => setCurrentPage(1)}>
-                                            1
-                                        </PaginationLink>
-                                    </PaginationItem>
-                                )}
-
-                                {currentPage > 3 && (
-                                    <PaginationItem>
-                                        <PaginationEllipsis />
-                                    </PaginationItem>
-                                )}
-
-                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                    const startPage = Math.max(1, currentPage - 2);
-                                    const endPage = Math.min(totalPages, startPage + 4);
-                                    const pageNum = Math.min(startPage + i, endPage);
-
-                                    if (pageNum >= 1 && pageNum <= totalPages) {
-                                        return (
-                                            <PaginationItem key={pageNum}>
-                                                <PaginationLink
-                                                    onClick={() => setCurrentPage(pageNum)}
-                                                    isActive={currentPage === pageNum}
-                                                >
-                                                    {pageNum}
-                                                </PaginationLink>
-                                            </PaginationItem>
-                                        );
-                                    }
-                                    return null;
-                                })}
-
-                                {currentPage < totalPages - 2 && (
-                                    <PaginationItem>
-                                        <PaginationEllipsis />
-                                    </PaginationItem>
-                                )}
-
-                                {currentPage < totalPages - 1 && (
-                                    <PaginationItem>
-                                        <PaginationLink onClick={() => setCurrentPage(totalPages)}>
+                                        <PaginationLink
+                                            onClick={() =>
+                                                setCurrentPage(totalPages)
+                                            }
+                                            isActive={
+                                                currentPage === totalPages
+                                            }
+                                        >
                                             {totalPages}
                                         </PaginationLink>
                                     </PaginationItem>
                                 )}
-
                                 <PaginationItem>
                                     <PaginationNext
-                                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                        onClick={() =>
+                                            setCurrentPage((prev: number) =>
+                                                Math.min(prev + 1, totalPages),
+                                            )
+                                        }
                                         disabled={currentPage === totalPages}
                                     />
                                 </PaginationItem>
