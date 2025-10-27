@@ -381,13 +381,20 @@ class PembelianController extends Controller
         foreach ($uploadedMapByGroup as $key => $uploadedValue) {
             $validationValue = $validationMap[$key] ?? null;
             if ($validationValue === null) {
-                $invalidGroups[$key] = [
-                    'discrepancy_category' => 'im_invalid', // Key not found in validation
-                    'error' => 'Key not found in validation data',
-                    'uploaded_total' => $uploadedValue,
-                    'source_total' => 0,
-                    'discrepancy_value' => $uploadedValue // All uploaded value is discrepancy
-                ];
+                // Check if uploaded value is 0, then categorize as valid with note
+                if ($uploadedValue == 0) {
+                    // This is considered valid - no return value exists in either document
+                    continue; // Skip adding to invalid groups
+                } else {
+                    // Key not found in validation but uploaded has value
+                    $invalidGroups[$key] = [
+                        'discrepancy_category' => 'im_invalid', // Key not found in validation
+                        'error' => 'Key not found in validation data',
+                        'uploaded_total' => $uploadedValue,
+                        'source_total' => 0,
+                        'discrepancy_value' => $uploadedValue // All uploaded value is discrepancy
+                    ];
+                }
             } else if (abs($uploadedValue - $validationValue) > 100.01) { // Changed to allow tolerance of -100 to 100
                 $discrepancy_value = $uploadedValue - $validationValue;
                 $invalidGroups[$key] = [
@@ -413,20 +420,36 @@ class PembelianController extends Controller
 
             // Find the validation value for this key
             $validationValue = $validationMap[$key] ?? null;
-            $uploadedValue = $uploadedMapByGroup[$key] ?? 0;
+            $uploadedValue = $cleanAndParseFloat($row[$uploadedSum] ?? 0);
+            $groupUploadedValue = $uploadedMapByGroup[$key] ?? 0;
 
             $isMatched = false;
+            $isIgnoredZero = false;
+
             if ($validationValue === null) {
                 // Key not found in validation data
-                $isMatched = false;
+                if ($groupUploadedValue == 0) {
+                    // This entire group is considered valid/ignored since total is 0
+                    $isIgnoredZero = true;
+                    // Add to matched rows with special note that this data was ignored because it has zero value
+                    $matchedRows[] = [
+                        'row_index' => $index,
+                        'key_value' => $key,
+                        'validation_source_total' => $validationValue,
+                        'uploaded_total' => $uploadedValue,
+                        'note' => 'Data Ignored. Tidak terdapat value Retur'
+                    ];
+                } else {
+                    $isMatched = false;
+                }
             } else {
                 // Check if the difference is within tolerance
-                $diff = abs($uploadedValue - $validationValue);
+                $diff = abs($groupUploadedValue - $validationValue);
                 $isMatched = $diff <= 100.01; // Within tolerance of -100 to 100
             }
 
             // If this record belongs to a key that is not matched (invalid), count it as mismatched
-            if (!$isMatched && isset($invalidGroups[$key])) {
+            if (!$isMatched && !$isIgnoredZero && isset($invalidGroups[$key])) {
                 // This row is part of an invalid group, so count it as mismatched
                 $invalidRows[] = [
                     'row_index' => $index,
@@ -434,13 +457,14 @@ class PembelianController extends Controller
                     'error' => $invalidGroups[$key]['error']
                 ];
                 $mismatchedRecordCount++;
-            } else if ($isMatched) {
+            } else if ($isMatched && !$isIgnoredZero) {
                 // This row is part of a matched group, track it as matched
                 $matchedRows[] = [
                     'row_index' => $index,
                     'key_value' => $key,
                     'validation_source_total' => $validationValue,
-                    'uploaded_total' => $uploadedValue
+                    'uploaded_total' => $uploadedValue,
+                    'note' => 'Target Data Sesuai'
                 ];
             }
         }
