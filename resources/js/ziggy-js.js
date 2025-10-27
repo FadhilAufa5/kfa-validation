@@ -2,6 +2,4 @@ const Ziggy = {"url":"http:\/\/kfa-validation-.test","port":null,"defaults":{},"
 if (typeof window !== 'undefined' && typeof window.Ziggy !== 'undefined') {
   Object.assign(Ziggy.routes, window.Ziggy.routes);
 }
-
-import { Ziggy } from './ziggy-generated'; 
 export { Ziggy };
