@@ -169,7 +169,7 @@ class PembelianController extends Controller
         $doc_type = $type;
 
         // Define the base directory for uploads
-        $uploadDir = storage_path("app/private/uploads/{$doc_type}");
+        $uploadDir = storage_path("app/private/uploads");
         if (!file_exists($uploadDir)) {
             mkdir($uploadDir, 0755, true);
         }
@@ -191,10 +191,10 @@ class PembelianController extends Controller
             $writer->setUseBOM(true); // Helps for UTF-8 safety
             $writer->save($csvPath);
 
-            $path = "uploads/{$doc_type}/{$originalName}.csv";
+            $path = "uploads/{$originalName}.csv";
         } else {
             // Move CSV as-is
-            $path = $file->storeAs("uploads/{$doc_type}", "{$originalName}.csv");
+            $path = $file->storeAs("uploads/", "{$originalName}.csv");
         }
 
         return response()->json(['filename' => "{$originalName}.csv"]);
@@ -211,6 +211,15 @@ class PembelianController extends Controller
 
         $filename = $request->input('filename');
         $path = "uploads/{$filename}";
+
+        // Get header row from request, default to 1 (first row) if not provided
+        $headerRow = (int) $request->input('headerRow', 1);
+        if ($headerRow < 1) {
+            Log::error('Invalid header row provided', ['headerRow' => $headerRow]);
+            return response()->json(['error' => 'Baris header tidak valid.'], 400);
+        }
+        // Convert to 0-based index for CSV processing
+        $headerOffset = $headerRow - 1;
 
         if (!Storage::exists($path)) {
             Log::warning('File not found for validation', ['path' => $path]);
@@ -251,19 +260,19 @@ class PembelianController extends Controller
             // Get columns from the table to use as headers
             $tableColumns = DB::getSchemaBuilder()->getColumnListing($validationDoc);
             $validationHeaders = array_map('trim', $tableColumns);
-            
+
             // Get all records from the table
             $validationRecords = DB::table($validationDoc)->get()->map(function ($record) {
                 return (array) $record;
             })->toArray();
-            
+
             Log::info('Validation data loaded from database', ['recordCount' => count($validationRecords), 'table' => $validationDoc]);
-            
+
             if (empty($validationRecords)) {
                 Log::error('No validation data found in table', ['table' => $validationDoc]);
                 return response()->json(['error' => "Tidak ada data validasi dalam tabel {$validationDoc}."], 404);
             }
-            
+
         } catch (\Exception $e) {
             Log::error('Failed to load validation data from database', ['table' => $validationDoc, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal memuat data validasi dari database.'], 500);
@@ -275,17 +284,27 @@ class PembelianController extends Controller
         $data = [];
         $headers = [];
 
-        Log::info('Loading uploaded file', ['extension' => $extension, 'path' => $fullPath]);
+        Log::info('Loading uploaded file', ['extension' => $extension, 'path' => $fullPath, 'headerRow' => $headerRow]);
 
         if (in_array($extension, ['xlsx', 'xls'])) {
-            // FIX 2: Correctly parse Excel files into associative arrays
+            // FIX 2: Correctly parse Excel files into associative arrays using dynamic header row
             $spreadsheet = IOFactory::load($fullPath);
             $sheet = $spreadsheet->getActiveSheet();
-            $headerRow = $sheet->rangeToArray('A1:' . $sheet->getHighestColumn() . '1', null, true, true, true)[1];
-            $headers = array_map('trim', $headerRow); // Get headers from the first row
 
-            // Start reading data from the second row
-            foreach ($sheet->getRowIterator(2) as $row) {
+            // Validate that the header row exists
+            $highestRow = $sheet->getHighestRow();
+            if ($headerRow > $highestRow) {
+                Log::error('Header row not found in Excel file', ['headerRow' => $headerRow, 'totalRows' => $highestRow]);
+                return response()->json(['error' => "Baris header #{$headerRow} tidak ditemukan dalam file."], 400);
+            }
+
+            // Get headers from the specified header row (convert to Excel-style 1-based)
+            $headerRange = 'A' . $headerRow . ':' . $sheet->getHighestColumn() . $headerRow;
+            $headerRowData = $sheet->rangeToArray($headerRange, null, true, true, true)[$headerRow];
+            $headers = array_map('trim', $headerRowData);
+
+            // Start reading data from the row after the header row
+            foreach ($sheet->getRowIterator($headerRow + 1) as $row) {
                 $rowData = [];
                 $cellIterator = $row->getCellIterator();
                 $cellIterator->setIterateOnlyExistingCells(false); // Iterate all cells, even if empty
@@ -309,9 +328,19 @@ class PembelianController extends Controller
                 $content = mb_convert_encoding($content, 'UTF-8', $encoding);
             }
 
+            // First validate that the header row exists by reading all rows
+            $tempCsv = Reader::createFromString($content);
+            $tempCsv->setDelimiter(',');
+            $allRows = iterator_to_array($tempCsv->getRecords());
+
+            if (!isset($allRows[$headerOffset])) {
+                Log::error('Header row not found in CSV file', ['headerRow' => $headerRow, 'totalRows' => count($allRows)]);
+                return response()->json(['error' => "Baris header #{$headerRow} tidak ditemukan dalam file."], 400);
+            }
+
             $csv = Reader::createFromString($content);
             $csv->setDelimiter(',');
-            $csv->setHeaderOffset(0);
+            $csv->setHeaderOffset($headerOffset); // Use dynamic header offset instead of hardcoded 0
             $headers = array_map('trim', $csv->getHeader()); // Trim headers to be safe
             $data = iterator_to_array($csv->getRecords());
 
@@ -414,7 +443,7 @@ class PembelianController extends Controller
         $matchedGroups = [];
         foreach ($uploadedMapByGroup as $key => $uploadedValue) {
             $validationValue = $validationMap[$key] ?? null;
-            
+
             if ($validationValue === null) {
                 // Check if uploaded value is 0, then categorize as valid with note
                 if ($uploadedValue == 0) {
@@ -1281,7 +1310,7 @@ class PembelianController extends Controller
             } elseif ($type === 'validation') {
                 // Read validation data from database
                 $validationTable = $config['doc_val'];
-                
+
                 try {
                     $connectorColumn = $config['connector'][1]; // e.g., 'no_transaksi'
                     $data = $this->readDatabaseAndFilterByKey($validationTable, $key, $connectorColumn);
@@ -1293,7 +1322,7 @@ class PembelianController extends Controller
                         'key' => $key,
                         'data' => $data,
                     ]);
-                    
+
                 } catch (\Exception $e) {
                     Log::error('Failed to read validation data from database', ['table' => $validationTable, 'error' => $e->getMessage()]);
                     return response()->json(['error' => 'Gagal membaca data validasi dari database'], 500);
@@ -1322,7 +1351,7 @@ class PembelianController extends Controller
             // Get table columns to use as headers
             $headers = DB::getSchemaBuilder()->getColumnListing($tableName);
             $headers = array_map('trim', $headers);
-            
+
             // Query the database to get records matching the key (case-insensitive exact match first, fallback to LIKE)
             $exactRecords = DB::table($tableName)
                 ->where(DB::raw('LOWER(TRIM(' . $connectorColumn . '))'), '=', strtolower(trim($key)))
@@ -1331,7 +1360,7 @@ class PembelianController extends Controller
                     return (array) $record;
                 })
                 ->toArray();
-                
+
             if (empty($exactRecords)) {
                 // Fallback to LIKE search if no exact match found
                 $records = DB::table($tableName)
@@ -1344,7 +1373,7 @@ class PembelianController extends Controller
             } else {
                 $records = $exactRecords;
             }
-            
+
             Log::info('Database filtered data count', [
                 'table' => $tableName,
                 'connector_column' => $connectorColumn,
@@ -1352,13 +1381,13 @@ class PembelianController extends Controller
                 'filtered_count' => count($records),
                 'exact_match' => !empty($exactRecords)
             ]);
-            
+
             // Add headers as first element
             return [
                 $headers,
                 ...array_values($records)
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Error reading database table', [
                 'table' => $tableName,
