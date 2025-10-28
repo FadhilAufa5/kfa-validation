@@ -56,6 +56,26 @@ import React from 'react';
 import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 
+// Helper function to format numbers as IDR currency
+const formatIDR = (value: number | string | null | undefined): string => {
+    if (value === null || value === undefined || value === '') {
+        return '-';
+    }
+
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+
+    if (isNaN(numValue)) {
+        return '-';
+    }
+
+    return new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    }).format(numValue);
+};
+
 interface ValidationGroup {
     discrepancy_category: string;
     error: string;
@@ -113,6 +133,7 @@ interface PaginationData<T> {
         search?: string;
         category?: string;
         source?: string;
+        note?: string;
     };
     sort: {
         key: string;
@@ -121,6 +142,7 @@ interface PaginationData<T> {
     uniqueFilters?: {
         categories: string[];
         sources: string[];
+        notes: string[];
     };
 }
 
@@ -377,26 +399,17 @@ export default function PembelianShow() {
                 }),
             ]);
 
-            console.log('Server Payload (Uploaded):', uploadedResponse.data);
-            console.log(
-                'Server Payload (Validation):',
-                validationResponse.data,
-            );
+            // Find the corresponding group to get the totals from either dataset
+            const groupData =
+                invalidGroupsData?.data?.find((group) => group.key === key) ||
+                matchedGroupsData?.data?.find((group) => group.key === key);
 
-            // Find the corresponding group in invalidGroupsData to get the totals
-            const invalidGroup = invalidGroupsData?.data?.find(
-                (group) => group.key === key
-            );
-            
-            if (invalidGroup) {
-                setUploadedTotal(invalidGroup.uploaded_total);
-                setSourceTotal(invalidGroup.source_total);
+            if (groupData) {
+                setUploadedTotal(groupData.uploaded_total);
+                setSourceTotal(groupData.source_total);
             }
 
             // Defensively extract the data array from the server's response body.
-            // This handles two cases:
-            // 1. The response is { ..., data: [...] } -> We use response.data.data
-            // 2. The response is [...] directly -> We use response.data
             const extractedUploadedData =
                 uploadedResponse.data?.data || uploadedResponse.data;
             const extractedValidationData =
@@ -596,8 +609,7 @@ export default function PembelianShow() {
                                             .total_pages || 1
                                     }
                                     totalItems={
-                                        matchedGroupsData?.pagination.total ||
-                                        0
+                                        matchedGroupsData?.pagination.total || 0
                                     }
                                     loading={matchedGroupsLoading}
                                     handleKeyClick={handleKeyClick}
@@ -782,7 +794,7 @@ const InvalidGroupsTabContent = React.memo(
                                         {getSortIndicator('source_total')}
                                     </TableHead>
                                     <TableHead
-                                        className="cursor-pointer"
+                                        className="w-[120px] cursor-pointer"
                                         onClick={() =>
                                             requestSort('discrepancy_value')
                                         }
@@ -818,13 +830,17 @@ const InvalidGroupsTabContent = React.memo(
                                             </TableCell>
                                             <TableCell>{group.error}</TableCell>
                                             <TableCell>
-                                                {group.uploaded_total}
+                                                {formatIDR(
+                                                    group.uploaded_total,
+                                                )}
                                             </TableCell>
                                             <TableCell>
-                                                {group.source_total}
+                                                {formatIDR(group.source_total)}
                                             </TableCell>
-                                            <TableCell>
-                                                {group.discrepancy_value}
+                                            <TableCell className="w-[120px]">
+                                                {formatIDR(
+                                                    group.discrepancy_value,
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 {group.sourceLabel}
@@ -886,7 +902,6 @@ const InvalidGroupsTabContent = React.memo(
                                     />
                                 </PaginationItem>
 
-                                {/* ... (Pagination logic remains unchanged) ... */}
                                 <PaginationItem>
                                     <PaginationLink
                                         onClick={() => setCurrentPage(1)}
@@ -1026,7 +1041,7 @@ const InvalidGroupsTabContent = React.memo(
 const renderDocumentData = (data: any[] | null) => {
     if (!data || data.length === 0) {
         return (
-            <div className="py-8 text-center text-muted-foreground">
+            <div className="py-4 text-center text-sm text-muted-foreground">
                 Tidak ada data ditemukan
             </div>
         );
@@ -1034,37 +1049,21 @@ const renderDocumentData = (data: any[] | null) => {
 
     let headers: string[] = [];
     let dataRows: any[] = [];
-    // Check if the first element is an object but not an array (handles array of objects)
     const isArrayOfObjects =
-        data.length > 0 && 
+        data.length > 0 &&
         typeof data[0] === 'object' &&
         data[0] !== null &&
         !Array.isArray(data[0]);
 
     if (isArrayOfObjects) {
-        // Data format: [{ header1: valueA, header2: valueB }, ...]
         headers = Object.keys(data[0]);
-        dataRows = data; // Use the entire array as data rows
+        dataRows = data;
     } else if (data.length > 0 && Array.isArray(data[0])) {
-        // Data format: [ [header1, header2], [valueA, valueB], ... ]
-        // We assume the first row is the header
-        headers = data[0].map(String); // Ensure all headers are strings
+        headers = data[0].map(String);
         dataRows = data.slice(1);
-    } else if (Array.isArray(data) && data.length > 0) {
-        // Handle case where the server sends headers in first row and content in remaining rows (array of arrays)
-        // Data format: [ [header1, header2], [valueA, valueB], [valueC, valueD], ... ]
-        if (Array.isArray(data[0])) {
-            headers = data[0].map(String); // First row contains headers
-            dataRows = data.slice(1); // Remaining rows contain data
-        } else {
-            // Single row of data without headers
-            headers = ['Value']; // Default header
-            dataRows = [data]; // Wrap the data
-        }
     } else {
-        // Fallback for unexpected or unsupported formats
         return (
-            <div className="py-8 text-center text-muted-foreground">
+            <div className="py-4 text-center text-sm text-muted-foreground">
                 Format data tidak dapat ditampilkan.
             </div>
         );
@@ -1072,59 +1071,104 @@ const renderDocumentData = (data: any[] | null) => {
 
     if (dataRows.length === 0) {
         return (
-            <div className="py-8 text-center text-muted-foreground">
+            <div className="py-4 text-center text-sm text-muted-foreground">
                 Tidak ada baris data yang cocok ditemukan.
             </div>
         );
     }
 
-    // Render the data in a table format for better visualization
+    const formatCellData = (value: any, header: string): { value: string } => {
+        if (value === null || value === undefined || value === '') {
+            return { value: '-' };
+        }
+
+        const stringValue = String(value).trim();
+        if (stringValue.startsWith('Rp') || stringValue.includes('IDR')) {
+            return { value: stringValue };
+        }
+
+        const parsedValue = parseFloat(stringValue.replace(/[^\d\.-]/g, ''));
+        let isFinancialField = false;
+        const lowerHeader = header.toLowerCase().trim();
+
+        if (
+            !isNaN(parsedValue) &&
+            (lowerHeader.includes('total') ||
+                lowerHeader.includes('harga') ||
+                lowerHeader.includes('jumlah') ||
+                lowerHeader.includes('nilai') ||
+                lowerHeader.includes('dpp') ||
+                lowerHeader.includes('ppn') ||
+                lowerHeader.includes('diskon') ||
+                lowerHeader.includes('bayar') ||
+                lowerHeader.includes('tagihan'))
+        ) {
+            isFinancialField = true;
+        }
+
+        const formattedValue = isFinancialField
+            ? formatIDR(parsedValue)
+            : stringValue;
+        return { value: formattedValue };
+    };
+
     return (
-        <div className="overflow-x-auto">
-            <div className="mb-2 text-sm font-medium text-muted-foreground">
-                Total: {dataRows.length} baris data ditemukan
-            </div>
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                        {headers.map((header, index) => (
-                            <th 
-                                key={index}
-                                className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-300"
-                            >
-                                {header}
-                            </th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-800">
-                    {dataRows.map((row, rowIndex) => (
-                        <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
-                            {headers.map((_, colIndex) => {
-                                const value = Array.isArray(row) 
-                                    ? row[colIndex] 
-                                    : row[headers[colIndex]];
-                                return (
-                                    <td 
-                                        key={colIndex}
-                                        className="px-3 py-2 text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate"
-                                        title={value !== null && value !== undefined ? String(value) : '-'}
-                                    >
-                                        {value !== null && value !== undefined
-                                            ? String(value)
-                                            : '-'}
-                                    </td>
-                                );
-                            })}
+        <>
+            <div className="overflow-auto">
+                <div className="mb-1 text-xs font-medium text-muted-foreground">
+                    Total: {dataRows.length} baris data ditemukan
+                </div>
+                <table className="w-full min-w-max divide-y divide-gray-200 text-xs dark:divide-gray-700">
+                    <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                            {headers.map((header, index) => (
+                                <th
+                                    key={index}
+                                    className="px-2 py-1.5 text-left font-medium tracking-wider whitespace-nowrap text-gray-500 uppercase dark:text-gray-300"
+                                >
+                                    {header}
+                                </th>
+                            ))}
                         </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-800">
+                        {dataRows.map((row, rowIndex) => (
+                            <tr
+                                key={rowIndex}
+                                className={
+                                    rowIndex % 2 === 0
+                                        ? 'bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700'
+                                        : 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600'
+                                }
+                            >
+                                {headers.map((header, colIndex) => {
+                                    const value = Array.isArray(row)
+                                        ? row[colIndex]
+                                        : row[header];
+                                    const formattedValue = formatCellData(
+                                        value,
+                                        header,
+                                    );
+                                    return (
+                                        <td
+                                            key={colIndex}
+                                            className="max-w-[150px] truncate px-2 py-1 whitespace-nowrap text-gray-900 dark:text-gray-100"
+                                            title={String(value)}
+                                        >
+                                            {formattedValue.value}
+                                        </td>
+                                    );
+                                })}
+                            </tr>
                         ))}
-                </tbody>
-            </table>
-        </div>
+                    </tbody>
+                </table>
+            </div>
+        </>
     );
 };
 
-// Document Comparison Popup Component (Refactored)
+// Document Comparison Popup Component
 const DocumentComparisonPopup = React.memo(
     ({
         isOpen,
@@ -1145,7 +1189,7 @@ const DocumentComparisonPopup = React.memo(
         sourceTotal: number | null;
         isLoading: boolean;
     }) => {
-        // Calculate totals if data is available
+        // Calculate counts if data is available
         const uploadedCount = uploadedDocData
             ? Array.isArray(uploadedDocData[0])
                 ? uploadedDocData.length - 1
@@ -1171,21 +1215,32 @@ const DocumentComparisonPopup = React.memo(
                             </span>
                         </DialogDescription>
                         {!isLoading &&
-                            (uploadedTotal !== null || sourceTotal !== null) && (
+                            (uploadedTotal !== null ||
+                                sourceTotal !== null) && (
                                 <div className="mt-2 flex flex-wrap gap-4 text-sm">
                                     {uploadedTotal !== null && (
                                         <div className="flex items-center gap-2">
-                                            <span className="font-medium text-blue-600">Total Diupload:</span>
-                                            <Badge variant="secondary" className="px-2 py-1">
-                                                {uploadedTotal.toLocaleString('id-ID')}
+                                            <span className="font-medium text-blue-600">
+                                                Total Diupload:
+                                            </span>
+                                            <Badge
+                                                variant="secondary"
+                                                className="px-2 py-1"
+                                            >
+                                                {formatIDR(uploadedTotal)}
                                             </Badge>
                                         </div>
                                     )}
                                     {sourceTotal !== null && (
                                         <div className="flex items-center gap-2">
-                                            <span className="font-medium text-green-600">Total Sumber:</span>
-                                            <Badge variant="outline" className="px-2 py-1">
-                                                {sourceTotal.toLocaleString('id-ID')}
+                                            <span className="font-medium text-green-600">
+                                                Total Sumber:
+                                            </span>
+                                            <Badge
+                                                variant="outline"
+                                                className="px-2 py-1"
+                                            >
+                                                {formatIDR(sourceTotal)}
                                             </Badge>
                                         </div>
                                     )}
@@ -1212,36 +1267,31 @@ const DocumentComparisonPopup = React.memo(
                             </span>
                         </div>
                     ) : (
-                        <div className="flex h-[65vh] flex-col gap-6 overflow-hidden">
-                            {/* Container for both documents - side by side on large screens, stacked on small screens */}
-                            <div className="flex flex-1 flex-col gap-6 overflow-hidden md:flex-row">
-                                {/* Uploaded Document */}
-                                <Card className="flex flex-1 flex-col overflow-hidden">
-                                    <CardHeader className="bg-blue-50 dark:bg-blue-900/20">
-                                        <CardTitle className="flex items-center gap-2 text-lg">
-                                            <FileText className="h-5 w-5 text-blue-600" />
+                        <div className="flex h-[65vh] flex-col gap-4 overflow-hidden">
+                            <div className="flex flex-1 flex-col gap-4 overflow-hidden">
+                                <div className="flex flex-1 flex-col overflow-hidden rounded-lg border bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800/20">
+                                    <div className="sticky top-0 z-10 bg-blue-50 px-6 py-4 dark:bg-blue-900/20">
+                                        <div className="flex items-center gap-2 text-sm font-semibold">
+                                            <FileText className="h-4 w-4 text-blue-600" />
                                             Dokumen Diupload
-                                        </CardTitle>
-                                    </CardHeader>
-                                    {/* FIXED: Made CardContent scrollable */}
-                                    <CardContent className="flex-1 overflow-y-auto pt-4">
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto px-6 py-2">
                                         {renderDocumentData(uploadedDocData)}
-                                    </CardContent>
-                                </Card>
+                                    </div>
+                                </div>
 
-                                {/* Validation Document */}
-                                <Card className="flex flex-1 flex-col overflow-hidden">
-                                    <CardHeader className="bg-green-50 dark:bg-green-900/20">
-                                        <CardTitle className="flex items-center gap-2 text-lg">
-                                            <FileCheck2 className="h-5 w-5 text-green-600" />
+                                <div className="flex flex-1 flex-col overflow-hidden rounded-lg border bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800/20">
+                                    <div className="sticky top-0 z-10 bg-green-50 px-6 py-4 dark:bg-green-900/20">
+                                        <div className="flex items-center gap-2 text-sm font-semibold">
+                                            <FileCheck2 className="h-4 w-4 text-green-600" />
                                             Dokumen Validasi
-                                        </CardTitle>
-                                    </CardHeader>
-                                    {/* FIXED: Made CardContent scrollable */}
-                                    <CardContent className="flex-1 overflow-y-auto pt-4">
+                                        </div>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto px-6 py-2">
                                         {renderDocumentData(validationDocData)}
-                                    </CardContent>
-                                </Card>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1350,8 +1400,7 @@ const MatchedGroupsTabContent = React.memo(
                                             requestMatchedSort('key')
                                         }
                                     >
-                                        Kunci{' '}
-                                        {getMatchedSortIndicator('key')}
+                                        Kunci {getMatchedSortIndicator('key')}
                                     </TableHead>
                                     <TableHead
                                         className="cursor-pointer"
@@ -1407,13 +1456,13 @@ const MatchedGroupsTabContent = React.memo(
                                             {group.key}
                                         </TableCell>
                                         <TableCell>
-                                            {group.uploaded_total}
+                                            {formatIDR(group.uploaded_total)}
                                         </TableCell>
                                         <TableCell>
-                                            {group.source_total}
+                                            {formatIDR(group.source_total)}
                                         </TableCell>
                                         <TableCell>
-                                            {group.difference}
+                                            {formatIDR(group.difference)}
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="secondary">
@@ -1476,7 +1525,6 @@ const MatchedGroupsTabContent = React.memo(
                                     />
                                 </PaginationItem>
 
-                                {/* ... (Pagination logic remains unchanged) ... */}
                                 <PaginationItem>
                                     <PaginationLink
                                         onClick={() => setCurrentPage(1)}

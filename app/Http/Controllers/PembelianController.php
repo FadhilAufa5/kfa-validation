@@ -1297,12 +1297,14 @@ class PembelianController extends Controller
                 }
 
                 $connectorColumn = $config['connector'][0]; // e.g., 'NOMOR PENERIMAAN'
+                $sumField = $config['sum'][0] ?? null; // e.g., 'jumlah_retur'
                 $data = $this->readFileAndFilterByKey($path, $key, $connectorColumn);
                 Log::info('Uploaded Data Response', ['data' => $data]);
 
                 return response()->json([
                     'filename' => $filename,
                     'connector_column' => $connectorColumn,
+                    'sum_field' => $sumField,
                     'key' => $key,
                     'data' => $data,
                 ]);
@@ -1313,12 +1315,14 @@ class PembelianController extends Controller
 
                 try {
                     $connectorColumn = $config['connector'][1]; // e.g., 'no_transaksi'
+                    $sumField = $config['sum'][1] ?? null; // e.g., 'dpp'
                     $data = $this->readDatabaseAndFilterByKey($validationTable, $key, $connectorColumn);
                     Log::info('Validation Data Response', ['data' => $data]);
 
                     return response()->json([
                         'filename' => $validationTable,
                         'connector_column' => $connectorColumn,
+                        'sum_field' => $sumField,
                         'key' => $key,
                         'data' => $data,
                     ]);
