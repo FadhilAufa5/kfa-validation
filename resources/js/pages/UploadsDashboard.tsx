@@ -70,11 +70,10 @@ export default function UploadsDashboard() {
         if (selectedHeader === null || activeFile === null)
             return alert('Pilih baris header terlebih dahulu!');
         try {
-            const res = await axios.post(
-    const saveUrl = route('pembelian.save', {
-        type: document_type.toLowerCase(),
-    });
-            );
+            const saveUrl = route('pembelian.save', {
+                type: document_type.toLowerCase(),
+            });
+            const res = await axios.post(saveUrl);
             console.log('✅ Processed file:', res.data);
             setModalOpen(false);
         } catch (err: any) {

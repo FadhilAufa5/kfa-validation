@@ -64,12 +64,12 @@ interface ValidationGroup {
     discrepancy_value: number;
 }
 
-interface MatchedRow {
-    row_index: number;
-    key_value: string;
-    total_omset: number;
-    validation_source_total: number;
+interface MatchedGroup {
+    key: string;
     uploaded_total: number;
+    source_total: number;
+    difference: number;
+    note: string;
 }
 
 interface ValidationGroupPaginated {
@@ -82,11 +82,12 @@ interface ValidationGroupPaginated {
     sourceLabel: string;
 }
 
-interface MatchedRowPaginated {
-    row_index: number;
-    key_value: string;
-    validation_source_total: number;
+interface MatchedGroupPaginated {
+    key: string;
     uploaded_total: number;
+    source_total: number;
+    difference: number;
+    note: string;
 }
 
 interface ValidationData {
@@ -155,17 +156,18 @@ export default function PembelianShow() {
         useState<PaginationData<ValidationGroupPaginated> | null>(null);
     const [invalidGroupsLoading, setInvalidGroupsLoading] = useState(false);
 
-    // State for matched records table controls
+    // State for matched groups table controls
     const [matchedSearchTerm, setMatchedSearchTerm] = useState('');
+    const [noteFilter, setNoteFilter] = useState('');
     const [sortConfigMatched, setSortConfigMatched] = useState<{
         key: string;
         direction: 'asc' | 'desc';
-    }>({ key: 'row_index', direction: 'asc' });
+    }>({ key: 'key', direction: 'asc' });
     const [currentPageMatched, setCurrentPageMatched] = useState(1);
     const [itemsPerPageMatched, setItemsPerPageMatched] = useState(10);
-    const [matchedRecordsData, setMatchedRecordsData] =
-        useState<PaginationData<MatchedRowPaginated> | null>(null);
-    const [matchedRecordsLoading, setMatchedRecordsLoading] = useState(false);
+    const [matchedGroupsData, setMatchedGroupsData] =
+        useState<PaginationData<MatchedGroupPaginated> | null>(null);
+    const [matchedGroupsLoading, setMatchedGroupsLoading] = useState(false);
 
     // State for document comparison popup
     const [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -271,16 +273,17 @@ export default function PembelianShow() {
         itemsPerPageInvalid,
     ]);
 
-    // Load matched records with pagination
+    // Load matched groups with pagination
     useEffect(() => {
-        const fetchMatchedRecords = async () => {
-            setMatchedRecordsLoading(true);
+        const fetchMatchedGroups = async () => {
+            setMatchedGroupsLoading(true);
             try {
                 const response = await axios.get(
                     `/pembelian/${validationId}/matched-records`,
                     {
                         params: {
                             search: matchedSearchTerm,
+                            note: noteFilter,
                             sort_key: sortConfigMatched.key,
                             sort_direction: sortConfigMatched.direction,
                             page: currentPageMatched,
@@ -288,18 +291,19 @@ export default function PembelianShow() {
                         },
                     },
                 );
-                setMatchedRecordsData(response.data);
+                setMatchedGroupsData(response.data);
             } catch (error) {
-                console.error('Error fetching matched records:', error);
+                console.error('Error fetching matched groups:', error);
             } finally {
-                setMatchedRecordsLoading(false);
+                setMatchedGroupsLoading(false);
             }
         };
 
-        fetchMatchedRecords();
+        fetchMatchedGroups();
     }, [
         validationId,
         matchedSearchTerm,
+        noteFilter,
         sortConfigMatched,
         currentPageMatched,
         itemsPerPageMatched,
@@ -310,6 +314,9 @@ export default function PembelianShow() {
 
     // Get unique source labels for filter dropdown (from backend)
     const uniqueSources = invalidGroupsData?.uniqueFilters?.sources || [];
+
+    // Get unique notes for matched groups filter dropdown (from backend)
+    const uniqueNotes = matchedGroupsData?.uniqueFilters?.notes || [];
 
     // Handle sort request for invalid groups
     const requestSortInvalid = (key: string) => {
@@ -564,12 +571,15 @@ export default function PembelianShow() {
                             </TabsContent>
                         )}
 
-                        {/* Matched Records Tab */}
+                        {/* Matched Groups Tab */}
                         {validationData.matched > 0 && (
                             <TabsContent value="valid" className="space-y-4">
-                                <MatchedRecordsTabContent
-                                    filteredAndSortedMatchedRecords={
-                                        matchedRecordsData?.data || []
+                                <MatchedGroupsTabContent
+                                    uniqueNotes={uniqueNotes}
+                                    noteFilter={noteFilter}
+                                    setNoteFilter={setNoteFilter}
+                                    filteredAndSortedMatchedGroups={
+                                        matchedGroupsData?.data || []
                                     }
                                     matchedSearchTerm={matchedSearchTerm}
                                     setMatchedSearchTerm={setMatchedSearchTerm}
@@ -582,14 +592,14 @@ export default function PembelianShow() {
                                     itemsPerPage={itemsPerPageMatched}
                                     setItemsPerPage={setItemsPerPageMatched}
                                     totalPages={
-                                        matchedRecordsData?.pagination
+                                        matchedGroupsData?.pagination
                                             .total_pages || 1
                                     }
                                     totalItems={
-                                        matchedRecordsData?.pagination.total ||
+                                        matchedGroupsData?.pagination.total ||
                                         0
                                     }
-                                    loading={matchedRecordsLoading}
+                                    loading={matchedGroupsLoading}
                                     handleKeyClick={handleKeyClick}
                                 />
                             </TabsContent>
@@ -1241,10 +1251,13 @@ const DocumentComparisonPopup = React.memo(
     },
 );
 
-// Matched Records Tab Content Component
-const MatchedRecordsTabContent = React.memo(
+// Matched Groups Tab Content Component
+const MatchedGroupsTabContent = React.memo(
     ({
-        filteredAndSortedMatchedRecords,
+        uniqueNotes,
+        noteFilter,
+        setNoteFilter,
+        filteredAndSortedMatchedGroups,
         matchedSearchTerm,
         setMatchedSearchTerm,
         requestMatchedSort,
@@ -1258,7 +1271,10 @@ const MatchedRecordsTabContent = React.memo(
         loading,
         handleKeyClick,
     }: {
-        filteredAndSortedMatchedRecords: MatchedRowPaginated[];
+        uniqueNotes: string[];
+        noteFilter: string;
+        setNoteFilter: (value: string) => void;
+        filteredAndSortedMatchedGroups: MatchedGroupPaginated[];
         matchedSearchTerm: string;
         setMatchedSearchTerm: (value: string) => void;
         requestMatchedSort: (key: string) => void;
@@ -1273,13 +1289,13 @@ const MatchedRecordsTabContent = React.memo(
         handleKeyClick: (key: string) => void;
     }) => (
         <div className="space-y-4">
-            {/* Search Control for Matched Records */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                <div className="md:col-span-4">
+            {/* Search and Filter Controls */}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="md:col-span-2">
                     <div className="relative">
                         <Search className="absolute top-2.5 left-2 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder="Cari berdasarkan Nilai Kunci, Indeks Baris, atau Total..."
+                            placeholder="Cari berdasarkan Kunci..."
                             className="pl-8"
                             value={matchedSearchTerm}
                             onChange={(e) => {
@@ -1289,10 +1305,31 @@ const MatchedRecordsTabContent = React.memo(
                         />
                     </div>
                 </div>
+                <div>
+                    <Select
+                        value={noteFilter || 'all'}
+                        onValueChange={(value) => {
+                            setNoteFilter(value === 'all' ? '' : value);
+                            setCurrentPage(1); // Reset to first page when filtering
+                        }}
+                    >
+                        <SelectTrigger>
+                            <SelectValue placeholder="Filter Catatan" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Semua Catatan</SelectItem>
+                            {uniqueNotes.map((note) => (
+                                <SelectItem key={note} value={note}>
+                                    {note}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
             <h3 className="text-lg font-semibold">
-                Data yang Sesuai (Matched Records):
+                Grup Data Valid (Matched Groups):
             </h3>
             {loading ? (
                 <div className="flex items-center justify-center py-8">
@@ -1310,33 +1347,11 @@ const MatchedRecordsTabContent = React.memo(
                                     <TableHead
                                         className="cursor-pointer"
                                         onClick={() =>
-                                            requestMatchedSort('row_index')
+                                            requestMatchedSort('key')
                                         }
                                     >
-                                        Indeks Baris{' '}
-                                        {getMatchedSortIndicator('row_index')}
-                                    </TableHead>
-                                    <TableHead
-                                        className="cursor-pointer"
-                                        onClick={() =>
-                                            requestMatchedSort('key_value')
-                                        }
-                                    >
-                                        Nilai Kunci{' '}
-                                        {getMatchedSortIndicator('key_value')}
-                                    </TableHead>
-                                    <TableHead
-                                        className="cursor-pointer"
-                                        onClick={() =>
-                                            requestMatchedSort(
-                                                'validation_source_total',
-                                            )
-                                        }
-                                    >
-                                        Total Sumber Validasi{' '}
-                                        {getMatchedSortIndicator(
-                                            'validation_source_total',
-                                        )}
+                                        Kunci{' '}
+                                        {getMatchedSortIndicator('key')}
                                     </TableHead>
                                     <TableHead
                                         className="cursor-pointer"
@@ -1349,27 +1364,61 @@ const MatchedRecordsTabContent = React.memo(
                                             'uploaded_total',
                                         )}
                                     </TableHead>
+                                    <TableHead
+                                        className="cursor-pointer"
+                                        onClick={() =>
+                                            requestMatchedSort('source_total')
+                                        }
+                                    >
+                                        Total Sumber{' '}
+                                        {getMatchedSortIndicator(
+                                            'source_total',
+                                        )}
+                                    </TableHead>
+                                    <TableHead
+                                        className="cursor-pointer"
+                                        onClick={() =>
+                                            requestMatchedSort('difference')
+                                        }
+                                    >
+                                        Selisih{' '}
+                                        {getMatchedSortIndicator('difference')}
+                                    </TableHead>
+                                    <TableHead
+                                        className="cursor-pointer"
+                                        onClick={() =>
+                                            requestMatchedSort('note')
+                                        }
+                                    >
+                                        Catatan{' '}
+                                        {getMatchedSortIndicator('note')}
+                                    </TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredAndSortedMatchedRecords.map((row) => (
-                                    <TableRow key={row.row_index}>
-                                        <TableCell className="font-medium">
-                                            {row.row_index}
-                                        </TableCell>
+                                {filteredAndSortedMatchedGroups.map((group) => (
+                                    <TableRow key={group.key}>
                                         <TableCell
-                                            className="cursor-pointer text-blue-600 hover:text-blue-800 hover:underline"
+                                            className="cursor-pointer font-medium text-blue-600 hover:text-blue-800 hover:underline"
                                             onClick={() =>
-                                                handleKeyClick(row.key_value)
+                                                handleKeyClick(group.key)
                                             }
                                         >
-                                            {row.key_value}
+                                            {group.key}
                                         </TableCell>
                                         <TableCell>
-                                            {row.validation_source_total}
+                                            {group.uploaded_total}
                                         </TableCell>
                                         <TableCell>
-                                            {row.uploaded_total}
+                                            {group.source_total}
+                                        </TableCell>
+                                        <TableCell>
+                                            {group.difference}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant="secondary">
+                                                {group.note}
+                                            </Badge>
                                         </TableCell>
                                     </TableRow>
                                 ))}

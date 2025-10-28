@@ -16,8 +16,8 @@ use App\Imports\Pembelian\PembelianReturImport;
 use App\Imports\Pembelian\PembelianUrgentImport;
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use League\Csv\Reader;
 use PhpOffice\PhpSpreadsheet\Writer\Csv;
+use League\Csv\Reader;
 use DB;
 use Illuminate\Support\Facades\Log;
 
@@ -246,26 +246,28 @@ class PembelianController extends Controller
             'validationSum' => $validationSum,
         ]);
 
-        // 🔹 Load validation (source) CSV
-        $validationPath = "validation/{$validationDoc}.csv";
-        if (!Storage::exists($validationPath)) {
-            Log::error('Validation document not found', ['path' => $validationPath]);
-            return response()->json(['error' => "Dokumen validasi {$validationDoc}.csv tidak ditemukan."], 404);
+        // 🔹 Load validation data from SQLite table
+        try {
+            // Get columns from the table to use as headers
+            $tableColumns = DB::getSchemaBuilder()->getColumnListing($validationDoc);
+            $validationHeaders = array_map('trim', $tableColumns);
+            
+            // Get all records from the table
+            $validationRecords = DB::table($validationDoc)->get()->map(function ($record) {
+                return (array) $record;
+            })->toArray();
+            
+            Log::info('Validation data loaded from database', ['recordCount' => count($validationRecords), 'table' => $validationDoc]);
+            
+            if (empty($validationRecords)) {
+                Log::error('No validation data found in table', ['table' => $validationDoc]);
+                return response()->json(['error' => "Tidak ada data validasi dalam tabel {$validationDoc}."], 404);
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to load validation data from database', ['table' => $validationDoc, 'error' => $e->getMessage()]);
+            return response()->json(['error' => 'Gagal memuat data validasi dari database.'], 500);
         }
-
-        $validationContent = Storage::get($validationPath);
-        $encoding = mb_detect_encoding($validationContent, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
-        if ($encoding !== 'UTF-8') {
-            $validationContent = mb_convert_encoding($validationContent, 'UTF-8', $encoding);
-        }
-
-        $validationCsv = Reader::createFromString($validationContent);
-        $validationCsv->setDelimiter(',');
-        $validationCsv->setHeaderOffset(0);
-        $validationHeaders = array_map('trim', $validationCsv->getHeader()); // Trim headers to be safe
-        $validationRecords = iterator_to_array($validationCsv->getRecords());
-
-        Log::info('Validation document loaded', ['recordCount' => count($validationRecords), 'headers' => $validationHeaders]);
 
         // 🔹 Load uploaded file
         $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
@@ -333,7 +335,7 @@ class PembelianController extends Controller
 
         if (!in_array($validationConnector, $validationHeaders)) {
             Log::error('Validation connector missing', ['column' => $validationConnector, 'availableHeaders' => $validationHeaders]);
-            return response()->json(['error' => "Kolom '{$validationConnector}' tidak ditemukan dalam file validasi."], 400);
+            return response()->json(['error' => "Kolom '{$validationConnector}' tidak ditemukan dalam tabel validasi."], 400);
         }
 
         if ($uploadedSum && !in_array($uploadedSum, $headers)) {
@@ -343,7 +345,7 @@ class PembelianController extends Controller
 
         if ($validationSum && !in_array($validationSum, $validationHeaders)) {
             Log::error('Validation sum field missing', ['column' => $validationSum, 'availableHeaders' => $validationHeaders]);
-            return response()->json(['error' => "Kolom '{$validationSum}' tidak ditemukan dalam file validasi."], 400);
+            return response()->json(['error' => "Kolom '{$validationSum}' tidak ditemukan dalam tabel validasi."], 400);
         }
 
         // A private helper function would be even cleaner, but this works well.
@@ -395,7 +397,7 @@ class PembelianController extends Controller
                         'discrepancy_value' => $uploadedValue // All uploaded value is discrepancy
                     ];
                 }
-            } else if (abs($uploadedValue - $validationValue) > 100.01) { // Changed to allow tolerance of -100 to 100
+            } else if (abs($uploadedValue - $validationValue) > 1000.01) { // Changed to allow tolerance of -100 to 100
                 $discrepancy_value = $uploadedValue - $validationValue;
                 $invalidGroups[$key] = [
                     'discrepancy_category' => 'discrepancy', // Value mismatch beyond tolerance
@@ -406,6 +408,42 @@ class PembelianController extends Controller
                 ];
             }
             // If the difference is within tolerance (-100 to 100), don't add to invalid groups, treat as matched
+        }
+
+        // 🔹 Create matched groups (similar to invalid groups)
+        $matchedGroups = [];
+        foreach ($uploadedMapByGroup as $key => $uploadedValue) {
+            $validationValue = $validationMap[$key] ?? null;
+            
+            if ($validationValue === null) {
+                // Check if uploaded value is 0, then categorize as valid with note
+                if ($uploadedValue == 0) {
+                    // Retur doesn't exist in validation and uploaded has 0 value
+                    $matchedGroups[$key] = [
+                        'uploaded_total' => $uploadedValue,
+                        'source_total' => 0,
+                        'difference' => 0,
+                        'note' => 'Retur Doesn\'t Record'
+                    ];
+                }
+                // else: already added to invalidGroups above
+            } else {
+                $difference = $uploadedValue - $validationValue;
+                if (abs($difference) <= 1000.01) { // Within tolerance
+                    if ($difference == 0) {
+                        $note = 'Sum Matched';
+                    } else {
+                        $note = 'Pembulatan';
+                    }
+                    $matchedGroups[$key] = [
+                        'uploaded_total' => $uploadedValue,
+                        'source_total' => $validationValue,
+                        'difference' => $difference,
+                        'note' => $note
+                    ];
+                }
+                // else: already added to invalidGroups above
+            }
         }
 
         // 🔹 Count mismatched records and track matched records
@@ -431,13 +469,12 @@ class PembelianController extends Controller
                 if ($groupUploadedValue == 0) {
                     // This entire group is considered valid/ignored since total is 0
                     $isIgnoredZero = true;
-                    // Add to matched rows with special note that this data was ignored because it has zero value
+                    // Add to matched rows
                     $matchedRows[] = [
                         'row_index' => $index,
                         'key_value' => $key,
                         'validation_source_total' => $validationValue,
                         'uploaded_total' => $uploadedValue,
-                        'note' => 'Data Ignored. Tidak terdapat value Retur'
                     ];
                 } else {
                     $isMatched = false;
@@ -445,7 +482,7 @@ class PembelianController extends Controller
             } else {
                 // Check if the difference is within tolerance
                 $diff = abs($groupUploadedValue - $validationValue);
-                $isMatched = $diff <= 100.01; // Within tolerance of -100 to 100
+                $isMatched = $diff <= 1000.01; // Within tolerance of -100 to 100
             }
 
             // If this record belongs to a key that is not matched (invalid), count it as mismatched
@@ -464,7 +501,6 @@ class PembelianController extends Controller
                     'key_value' => $key,
                     'validation_source_total' => $validationValue,
                     'uploaded_total' => $uploadedValue,
-                    'note' => 'Target Data Sesuai'
                 ];
             }
         }
@@ -497,6 +533,7 @@ class PembelianController extends Controller
             'validation_details' => [
                 'invalid_groups' => $invalidGroups,
                 'invalid_rows' => $invalidRows,
+                'matched_groups' => $matchedGroups,
                 'matched_rows' => $matchedRows,
             ],
         ]);
@@ -1012,7 +1049,7 @@ class PembelianController extends Controller
     }
 
     /**
-     * Get paginated matched records data
+     * Get paginated matched groups data
      */
     public function getMatchedRecords($id, Request $request)
     {
@@ -1022,29 +1059,45 @@ class PembelianController extends Controller
             return response()->json(['error' => 'Validation data not found'], 404);
         }
 
-        $allMatchedRows = $validation->validation_details['matched_rows'] ?? [];
+        $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
+
+        // Convert to array format for easier processing
+        $allItems = [];
+        foreach ($matchedGroups as $key => $group) {
+            $allItems[] = array_merge(['key' => $key], $group);
+        }
+
+        // Extract unique notes for filters
+        $uniqueNotes = array_values(array_unique(array_map(function ($item) {
+            return $item['note'];
+        }, $allItems)));
 
         // Get request parameters for filtering and pagination
         $searchTerm = $request->input('search', '');
-        $sortKey = $request->input('sort_key', 'row_index');
+        $noteFilter = $request->input('note', '');
+        $sortKey = $request->input('sort_key', 'key');
         $sortDirection = $request->input('sort_direction', 'asc');
         $page = $request->input('page', 1);
         $perPage = $request->input('per_page', 10);
 
-        // Apply search filter - search in multiple fields
-        $filteredMatchedRows = $allMatchedRows;
+        // Apply search filter - search in the 'key' field (Kunci column)
+        $filteredItems = $allItems;
         if ($searchTerm) {
-            $filteredMatchedRows = array_filter($filteredMatchedRows, function ($item) use ($searchTerm) {
-                return stripos($item['key_value'] ?? '', $searchTerm) !== false ||
-                    stripos((string) ($item['row_index'] ?? ''), $searchTerm) !== false ||
-                    stripos((string) ($item['validation_source_total'] ?? ''), $searchTerm) !== false ||
-                    stripos((string) ($item['uploaded_total'] ?? ''), $searchTerm) !== false;
+            $filteredItems = array_filter($filteredItems, function ($item) use ($searchTerm) {
+                return stripos($item['key'], $searchTerm) !== false;
+            });
+        }
+
+        // Apply note filter
+        if ($noteFilter) {
+            $filteredItems = array_filter($filteredItems, function ($item) use ($noteFilter) {
+                return $item['note'] === $noteFilter;
             });
         }
 
         // Apply sorting
         if ($sortKey && $sortDirection) {
-            usort($filteredMatchedRows, function ($a, $b) use ($sortKey, $sortDirection) {
+            usort($filteredItems, function ($a, $b) use ($sortKey, $sortDirection) {
                 $aValue = $a[$sortKey] ?? null;
                 $bValue = $b[$sortKey] ?? null;
 
@@ -1060,9 +1113,9 @@ class PembelianController extends Controller
         }
 
         // Calculate pagination
-        $totalItems = count($filteredMatchedRows);
+        $totalItems = count($filteredItems);
         $offset = ($page - 1) * $perPage;
-        $paginatedItems = array_slice($filteredMatchedRows, $offset, $perPage);
+        $paginatedItems = array_slice($filteredItems, $offset, $perPage);
 
         return response()->json([
             'data' => $paginatedItems,
@@ -1074,14 +1127,14 @@ class PembelianController extends Controller
             ],
             'filters' => [
                 'search' => $searchTerm,
+                'note' => $noteFilter,
             ],
             'sort' => [
                 'key' => $sortKey,
                 'direction' => $sortDirection,
             ],
             'uniqueFilters' => [
-                // For matched records, we don't have categories or sources like invalid groups
-                // but we can still return unique values if needed in the future
+                'notes' => $uniqueNotes,
             ],
         ]);
     }
@@ -1226,24 +1279,25 @@ class PembelianController extends Controller
                 ]);
 
             } elseif ($type === 'validation') {
-                // Read validation file
-                $validationDoc = $config['doc_val'];
-                $path = "validation/{$validationDoc}.csv";
+                // Read validation data from database
+                $validationTable = $config['doc_val'];
+                
+                try {
+                    $connectorColumn = $config['connector'][1]; // e.g., 'no_transaksi'
+                    $data = $this->readDatabaseAndFilterByKey($validationTable, $key, $connectorColumn);
+                    Log::info('Validation Data Response', ['data' => $data]);
 
-                if (!Storage::exists($path)) {
-                    return response()->json(['error' => 'Validation file not found'], 404);
+                    return response()->json([
+                        'filename' => $validationTable,
+                        'connector_column' => $connectorColumn,
+                        'key' => $key,
+                        'data' => $data,
+                    ]);
+                    
+                } catch (\Exception $e) {
+                    Log::error('Failed to read validation data from database', ['table' => $validationTable, 'error' => $e->getMessage()]);
+                    return response()->json(['error' => 'Gagal membaca data validasi dari database'], 500);
                 }
-
-                $connectorColumn = $config['connector'][1]; // e.g., 'no_transaksi'
-                $data = $this->readFileAndFilterByKey($path, $key, $connectorColumn);
-                Log::info('Validation Data Response', ['data' => $data]);
-
-                return response()->json([
-                    'filename' => "{$validationDoc}.csv",
-                    'connector_column' => $connectorColumn,
-                    'key' => $key,
-                    'data' => $data,
-                ]);
             }
 
             return response()->json(['error' => 'Invalid type parameter'], 400);
@@ -1256,6 +1310,63 @@ class PembelianController extends Controller
                 'type' => $type,
             ]);
             return response()->json(['error' => 'Failed to fetch document data: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Helper method to read database and filter by key
+     */
+    private function readDatabaseAndFilterByKey($tableName, $key, $connectorColumn)
+    {
+        try {
+            // Get table columns to use as headers
+            $headers = DB::getSchemaBuilder()->getColumnListing($tableName);
+            $headers = array_map('trim', $headers);
+            
+            // Query the database to get records matching the key (case-insensitive exact match first, fallback to LIKE)
+            $exactRecords = DB::table($tableName)
+                ->where(DB::raw('LOWER(TRIM(' . $connectorColumn . '))'), '=', strtolower(trim($key)))
+                ->get()
+                ->map(function ($record) {
+                    return (array) $record;
+                })
+                ->toArray();
+                
+            if (empty($exactRecords)) {
+                // Fallback to LIKE search if no exact match found
+                $records = DB::table($tableName)
+                    ->where($connectorColumn, 'LIKE', '%' . trim($key) . '%')
+                    ->get()
+                    ->map(function ($record) {
+                        return (array) $record;
+                    })
+                    ->toArray();
+            } else {
+                $records = $exactRecords;
+            }
+            
+            Log::info('Database filtered data count', [
+                'table' => $tableName,
+                'connector_column' => $connectorColumn,
+                'key' => $key,
+                'filtered_count' => count($records),
+                'exact_match' => !empty($exactRecords)
+            ]);
+            
+            // Add headers as first element
+            return [
+                $headers,
+                ...array_values($records)
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error('Error reading database table', [
+                'table' => $tableName,
+                'column' => $connectorColumn,
+                'key' => $key,
+                'error' => $e->getMessage()
+            ]);
+            throw $e;
         }
     }
 
@@ -1307,8 +1418,8 @@ class PembelianController extends Controller
 
         // Filter data by the connector key (case-insensitive and trimmed)
         $filteredData = array_filter($allData, function ($row) use ($connectorColumn, $key) {
-            $rowKey = trim((string)($row[$connectorColumn] ?? ''));
-            $searchKey = trim((string)$key);
+            $rowKey = trim((string) ($row[$connectorColumn] ?? ''));
+            $searchKey = trim((string) $key);
             return strcasecmp($rowKey, $searchKey) === 0; // Case-insensitive comparison
         });
 
