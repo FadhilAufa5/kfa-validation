@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
-import { cn } from '@/lib/utils';
+
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
@@ -17,8 +17,8 @@ import {
     FileText,
     FileX2,
     Loader2,
-    Percent,
     Scale,
+    Users,
     XCircle,
 } from 'lucide-react';
 
@@ -51,6 +51,7 @@ interface ValidationData {
     matched: number;
     total: number;
     mismatched: number;
+    invalidGroups: number;
     isValid: boolean;
 }
 
@@ -141,6 +142,10 @@ export default function PembelianShow() {
     );
     const [popupLoading, setPopupLoading] = useState(false);
 
+    // State for all chart data (not paginated)
+    const [allInvalidGroups, setAllInvalidGroups] = useState<ValidationGroupPaginated[]>([]);
+    const [allMatchedGroups, setAllMatchedGroups] = useState<MatchedGroupPaginated[]>([]);
+
     // Loading state jika data belum ada
     if (!validationData) {
         return (
@@ -160,9 +165,12 @@ export default function PembelianShow() {
     const stats = useMemo(
         () => [
             {
-                title: 'Overall Validation Score',
-                value: `${validationData.score.toFixed(2)}%`,
-                icon: Percent,
+                title: 'Validation Status',
+                value: validationData.isValid ? 'Valid' : 'Invalid',
+                icon: validationData.isValid ? CheckCircle2 : XCircle,
+                color: validationData.isValid
+                    ? 'text-green-600'
+                    : 'text-red-600',
             },
             {
                 title: 'Total Records Processed',
@@ -187,9 +195,18 @@ export default function PembelianShow() {
                         ? 'text-red-600'
                         : 'text-muted-foreground',
             },
+            {
+                title: 'Total Mismatched Groups',
+                value: validationData.invalidGroups.toLocaleString('id-ID'),
+                icon: Users,
+                color:
+                    validationData.invalidGroups > 0
+                        ? 'text-orange-600'
+                        : 'text-muted-foreground',
+            },
         ],
         [
-            validationData.score,
+            validationData.isValid,
             validationData.total,
             validationData.matched,
             validationData.mismatched,
@@ -233,6 +250,38 @@ export default function PembelianShow() {
         currentPageInvalid,
         itemsPerPageInvalid,
     ]);
+
+    // Load all invalid groups data for charts
+    useEffect(() => {
+        const fetchAllInvalidGroups = async () => {
+            try {
+                const response = await axios.get(
+                    `/pembelian/${validationId}/invalid-groups/all`,
+                );
+                setAllInvalidGroups(response.data);
+            } catch (error) {
+                console.error('Error fetching all invalid groups:', error);
+            }
+        };
+
+        fetchAllInvalidGroups();
+    }, [validationId]);
+
+    // Load all matched groups data for charts
+    useEffect(() => {
+        const fetchAllMatchedGroups = async () => {
+            try {
+                const response = await axios.get(
+                    `/pembelian/${validationId}/matched-records/all`,
+                );
+                setAllMatchedGroups(response.data);
+            } catch (error) {
+                console.error('Error fetching all matched groups:', error);
+            }
+        };
+
+        fetchAllMatchedGroups();
+    }, [validationId]);
 
     // Load matched groups with pagination
     useEffect(() => {
@@ -425,62 +474,339 @@ export default function PembelianShow() {
                     </Link>
                 </div>
 
-                {/* Main Grid Layout */}
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                    {/* Main Status Card (Dinamis) */}
-                    <Card className="flex items-center justify-center bg-gray-50 lg:col-span-2 dark:bg-gray-900/50">
-                        <CardContent className="flex flex-col items-center justify-center p-8 text-center">
-                            <div
-                                className={cn(
-                                    'mb-4 flex h-20 w-20 items-center justify-center rounded-full',
-                                    validationData.isValid
-                                        ? 'bg-green-100 dark:bg-green-900'
-                                        : 'bg-red-100 dark:bg-red-900',
-                                )}
-                            >
-                                {validationData.isValid ? (
-                                    <CheckCircle2 className="h-12 w-12 text-green-600 dark:text-green-400" />
-                                ) : (
-                                    <XCircle className="h-12 w-12 text-red-600 dark:text-red-400" />
-                                )}
+                {/* Horizontal Metrics Layout */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                    {stats.map((stat, index) => (
+                        <div key={index} className="rounded-lg border bg-card text-card-foreground shadow-sm">
+                            <div className="flex flex-row items-center justify-between p-3">
+                                <div>
+                                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                                        {stat.title}
+                                    </CardTitle>
+                                </div>
+                                <stat.icon
+                                    className={`h-4 w-4 ${stat.color || 'text-muted-foreground'}`}
+                                />
                             </div>
-                            <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                                {validationData.isValid
-                                    ? 'Data Valid'
-                                    : 'Data Tidak Valid'}
-                            </h2>
-                            <p className="mt-1 text-gray-500 dark:text-gray-400">
-                                {validationData.isValid
-                                    ? 'Tidak ada perbedaan data ditemukan!'
-                                    : `${validationData.mismatched.toLocaleString(
-                                          'id-ID',
-                                      )} perbedaan data ditemukan!`}
-                            </p>
+                            <div className="p-3 pt-0">
+                                <div
+                                    className={`text-lg font-bold ${stat.color || ''}`}
+                                >
+                                    {stat.value}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Charts Section */}
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    {/* Donut Chart for Validation Score */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Distribusi Skor Validasi</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="flex items-center justify-center">
+                                <div className="relative h-40 w-40">
+                                    {/* Simple CSS donut chart */}
+                                    <div className="absolute inset-0 flex items-center justify-center rounded-full">
+                                        <svg className="h-full w-full -rotate-90 transform">
+                                            <circle
+                                                cx="80"
+                                                cy="80"
+                                                r="70"
+                                                stroke="currentColor"
+                                                strokeWidth="14"
+                                                fill="none"
+                                                className="text-gray-200"
+                                            />
+                                            <circle
+                                                cx="80"
+                                                cy="80"
+                                                r="70"
+                                                stroke="currentColor"
+                                                strokeWidth="14"
+                                                fill="none"
+                                                strokeDasharray={`${2 * Math.PI * 70}`}
+                                                strokeDashoffset={`${2 * Math.PI * 70 * (1 - validationData.score / 100)}`}
+                                                className={
+                                                    validationData.score >= 80
+                                                        ? 'text-green-500'
+                                                        : validationData.score >=
+                                                            50
+                                                          ? 'text-yellow-500'
+                                                          : 'text-red-500'
+                                                }
+                                            />
+                                        </svg>
+                                        <div className="absolute flex flex-col items-center">
+                                            <span className="text-xl font-bold">
+                                                {validationData.score.toFixed(
+                                                    1,
+                                                )}
+                                                %
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">
+                                                Skor Validasi
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="mt-6 flex justify-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="h-3 w-3 rounded-full bg-green-500"></div>
+                                    <span className="text-sm">
+                                        Matched: {validationData.matched}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="h-3 w-3 rounded-full bg-red-500"></div>
+                                    <span className="text-sm">
+                                        Invalid: {validationData.mismatched}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className="h-3 w-3 rounded-full bg-orange-500"></div>
+                                    <span className="text-sm">
+                                        Groups: {validationData.invalidGroups}
+                                    </span>
+                                </div>
+                            </div>
                         </CardContent>
                     </Card>
 
-                    {/* Stats Cards */}
-                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-1">
-                        {stats.map((stat, index) => (
-                            <Card key={index}>
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                                        {stat.title}
-                                    </CardTitle>
-                                    <stat.icon
-                                        className={`h-4 w-4 ${stat.color || 'text-muted-foreground'}`}
-                                    />
-                                </CardHeader>
-                                <CardContent>
-                                    <div
-                                        className={`text-2xl font-bold ${stat.color || ''}`}
-                                    >
-                                        {stat.value}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
+                    <div className="space-y-6">
+                        {/* Horizontal Bar Chart for Invalid Data Categories */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Kategori Data Tidak Valid</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-2">
+                                    {Array.from(
+                                        new Set(
+                                            allInvalidGroups.map(
+                                                (g) => g.discrepancy_category,
+                                            ),
+                                        ),
+                                    )
+                                        .slice(0, 5) // Display up to 5 categories
+                                        .map((category) => {
+                                            const count = allInvalidGroups.filter(
+                                                (g) =>
+                                                    g.discrepancy_category ===
+                                                    category,
+                                            ).length;
+                                            const maxCount = Math.max(
+                                                ...Array.from(
+                                                    new Set(
+                                                        allInvalidGroups.map(
+                                                            (g) =>
+                                                                g.discrepancy_category,
+                                                        ),
+                                                    ),
+                                                ).map(
+                                                    (cat) =>
+                                                        allInvalidGroups.filter(
+                                                            (g) =>
+                                                                g.discrepancy_category ===
+                                                                cat,
+                                                        ).length,
+                                                ),
+                                                1, // Ensure maxCount is at least 1 to avoid division by zero
+                                            );
+                                            return (
+                                                <div
+                                                    key={category}
+                                                    className="flex items-center gap-2"
+                                                >
+                                                    <span className="w-24 truncate text-xs">
+                                                        {category}
+                                                    </span>
+                                                    <div className="relative h-6 flex-1 rounded-full bg-gray-200">
+                                                        <div
+                                                            className="flex h-6 items-center justify-end rounded-full bg-blue-500 pr-2"
+                                                            style={{
+                                                                width: `${(count / maxCount) * 100}%`,
+                                                            }}
+                                                        >
+                                                            <span className="text-xs font-medium text-white">
+                                                                {count}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Horizontal Bar Chart for Invalid Sumber */}
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>
+                                    Persentase Sumber Data Tidak Valid
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-2">
+                                    {Array.from(
+                                        new Set(
+                                            allInvalidGroups.map(
+                                                (g) => g.sourceLabel,
+                                            ),
+                                        ),
+                                    )
+                                        .slice(0, 5)
+                                        .map((sourceLabel) => {
+                                            const count = allInvalidGroups.filter(
+                                                (g) =>
+                                                    g.sourceLabel ===
+                                                    sourceLabel,
+                                            ).length;
+                                            const maxCount = Math.max(
+                                                ...Array.from(
+                                                    new Set(
+                                                        allInvalidGroups.map(
+                                                            (g) =>
+                                                                g.sourceLabel,
+                                                        ),
+                                                    ),
+                                                ).map(
+                                                    (label) =>
+                                                        allInvalidGroups.filter(
+                                                            (g) =>
+                                                                g.sourceLabel ===
+                                                                label,
+                                                        ).length,
+                                                ),
+                                                1, // Ensure maxCount is at least 1 to avoid division by zero
+                                            );
+                                            return (
+                                                <div
+                                                    key={sourceLabel}
+                                                    className="flex items-center gap-2"
+                                                >
+                                                    <span className="w-24 truncate text-xs">
+                                                        {sourceLabel}
+                                                    </span>
+                                                    <div className="relative h-6 flex-1 rounded-full bg-gray-200">
+                                                        <div
+                                                            className="flex h-6 items-center justify-end rounded-full bg-purple-500 pr-2"
+                                                            style={{
+                                                                width: `${(count / maxCount) * 100}%`,
+                                                            }}
+                                                        >
+                                                            <span className="text-xs font-medium text-white">
+                                                                {count}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </CardContent>
+                        </Card>
                     </div>
+                </div>
+
+                {/* Second Row of Charts */}
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    {/* Horizontal Bar Chart for Invalid Data Score */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Distribusi Nilai Diskrepansi</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-2">
+                                {allInvalidGroups
+                                    .slice(0, 5)
+                                    .sort(
+                                        (a, b) =>
+                                            Math.abs(b.discrepancy_value) -
+                                            Math.abs(a.discrepancy_value),
+                                    )
+                                    .map((item) => (
+                                        <div
+                                            key={item.key}
+                                            className="flex items-center gap-2"
+                                        >
+                                            <span className="w-24 truncate text-xs">
+                                                {item.key}
+                                            </span>
+                                            <div className="flex-1 overflow-hidden text-right">
+                                                <span className="text-xs font-medium text-gray-900">
+                                                    {Math.abs(item.discrepancy_value).toLocaleString(
+                                                        'id-ID',
+                                                    )}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Horizontal Bar Chart for Valid Data Notes */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Distribusi Catatan Data Valid</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-2">
+                                {Array.from(
+                                    new Set(
+                                        allMatchedGroups.map(
+                                            (g) => g.note,
+                                        ),
+                                    ),
+                                )
+                                    .slice(0, 5)
+                                    .map((note) => {
+                                        const count = allMatchedGroups.filter((g) => g.note === note).length;
+                                        const maxCount = Math.max(
+                                            ...Array.from(
+                                                new Set(
+                                                    allMatchedGroups.map((g) => g.note),
+                                                ),
+                                            ).map(
+                                                (cat) =>
+                                                    allMatchedGroups.filter(
+                                                        (g) => g.note === cat,
+                                                    ).length,
+                                            ),
+                                            1, // Ensure maxCount is at least 1 to avoid division by zero
+                                        );
+                                        return (
+                                            <div
+                                                key={note}
+                                                className="flex items-center gap-2"
+                                            >
+                                                <span className="w-24 truncate text-xs">
+                                                    {note}
+                                                </span>
+                                                <div className="relative h-6 flex-1 rounded-full bg-gray-200">
+                                                    <div
+                                                        className="flex h-6 items-center justify-end rounded-full bg-green-500 pr-2"
+                                                        style={{
+                                                            width: `${(count / maxCount) * 100}%`,
+                                                        }}
+                                                    >
+                                                        <span className="text-xs font-medium text-white">
+                                                            {count}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
 
                 {/* Tabs for Invalid and Valid Groups */}

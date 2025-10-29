@@ -861,6 +861,7 @@ class PembelianController extends Controller
             'matched' => $validation->matched_records,
             'total' => $validation->total_records,
             'mismatched' => $validation->mismatched_records,
+            'invalidGroups' => count($validation->validation_details['invalid_groups'] ?? []),
             'isValid' => $validation->mismatched_records === 0,
         ];
 
@@ -967,6 +968,53 @@ class PembelianController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => 'Gagal membaca file validasi: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Get all invalid groups data for charts (without pagination)
+     */
+    public function getAllInvalidGroups($id, Request $request)
+    {
+        $validation = \App\Models\Validation::find($id);
+
+        if (!$validation) {
+            return response()->json(['error' => 'Validation data not found'], 404);
+        }
+
+        $invalidGroups = $validation->validation_details['invalid_groups'] ?? [];
+
+        // Convert to array format for easier processing
+        $allItems = [];
+        foreach ($invalidGroups as $key => $group) {
+            $allItems[] = array_merge(['key' => $key], $group, [
+                // Determine source label for filtering
+                'sourceLabel' => $this->getSourceLabel($group),
+            ]);
+        }
+
+        return response()->json($allItems);
+    }
+
+    /**
+     * Get all matched groups data for charts (without pagination)
+     */
+    public function getAllMatchedGroups($id, Request $request)
+    {
+        $validation = \App\Models\Validation::find($id);
+
+        if (!$validation) {
+            return response()->json(['error' => 'Validation data not found'], 404);
+        }
+
+        $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
+
+        // Convert to array format for easier processing
+        $allItems = [];
+        foreach ($matchedGroups as $key => $group) {
+            $allItems[] = array_merge(['key' => $key], $group);
+        }
+
+        return response()->json($allItems);
     }
 
     /**

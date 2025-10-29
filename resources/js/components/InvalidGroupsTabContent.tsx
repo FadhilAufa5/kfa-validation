@@ -50,12 +50,15 @@ const formatIDR = (value: number | string | null | undefined): string => {
         return '-';
     }
 
+    // Convert to absolute value before formatting to remove minus sign
+    const absoluteValue = Math.abs(numValue);
+
     return new Intl.NumberFormat('id-ID', {
         style: 'currency',
         currency: 'IDR',
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
-    }).format(numValue);
+    }).format(absoluteValue);
 };
 
 interface Props {

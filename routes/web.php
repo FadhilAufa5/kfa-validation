@@ -72,7 +72,9 @@ Route::post('/pembelian/process/{filename}', [PembelianController::class, 'proce
 
 Route::get('pembelian/{id}', [PembelianController::class, 'show'])->name('pembelian.show');
 Route::get('pembelian/{id}/invalid-groups', [PembelianController::class, 'getInvalidGroups'])->name('pembelian.invalid-groups');
+Route::get('pembelian/{id}/invalid-groups/all', [PembelianController::class, 'getAllInvalidGroups'])->name('pembelian.invalid-groups-all');
 Route::get('pembelian/{id}/matched-records', [PembelianController::class, 'getMatchedRecords'])->name('pembelian.matched-records');
+Route::get('pembelian/{id}/matched-records/all', [PembelianController::class, 'getAllMatchedGroups'])->name('pembelian.matched-records-all');
 Route::get('pembelian/{id}/document-comparison', [PembelianController::class, 'getDocumentComparisonData'])->name('pembelian.document-comparison');
 Route::get('pembelian/history/data', [PembelianController::class, 'getValidationHistory'])->name('pembelian.history.data');
 
