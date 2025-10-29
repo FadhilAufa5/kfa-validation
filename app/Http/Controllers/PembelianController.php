@@ -255,18 +255,21 @@ class PembelianController extends Controller
             'validationSum' => $validationSum,
         ]);
 
-        // 🔹 Load validation data from SQLite table
+        // 🔹 Load validation data from SQLite table with optimization
         try {
-            // Get columns from the table to use as headers
-            $tableColumns = DB::getSchemaBuilder()->getColumnListing($validationDoc);
-            $validationHeaders = array_map('trim', $tableColumns);
+            // Get validation data with only necessary columns
+            $validationRecords = DB::table($validationDoc)
+                ->select([$validationConnector, $validationSum]) // Only fetch columns used for comparison
+                ->get()
+                ->map(function ($record) use ($validationConnector, $validationSum) {
+                    return [
+                        $validationConnector => trim($record->{$validationConnector} ?? ''),
+                        $validationSum => floatval($record->{$validationSum} ?? 0)
+                    ];
+                })
+                ->toArray();
 
-            // Get all records from the table
-            $validationRecords = DB::table($validationDoc)->get()->map(function ($record) {
-                return (array) $record;
-            })->toArray();
-
-            Log::info('Validation data loaded from database', ['recordCount' => count($validationRecords), 'table' => $validationDoc]);
+            Log::info('Validation data loaded from database (optimized)', ['recordCount' => count($validationRecords), 'table' => $validationDoc]);
 
             if (empty($validationRecords)) {
                 Log::error('No validation data found in table', ['table' => $validationDoc]);
@@ -287,7 +290,7 @@ class PembelianController extends Controller
         Log::info('Loading uploaded file', ['extension' => $extension, 'path' => $fullPath, 'headerRow' => $headerRow]);
 
         if (in_array($extension, ['xlsx', 'xls'])) {
-            // FIX 2: Correctly parse Excel files into associative arrays using dynamic header row
+            // Optimized Excel reading with chunked processing
             $spreadsheet = IOFactory::load($fullPath);
             $sheet = $spreadsheet->getActiveSheet();
 
@@ -298,26 +301,40 @@ class PembelianController extends Controller
                 return response()->json(['error' => "Baris header #{$headerRow} tidak ditemukan dalam file."], 400);
             }
 
-            // Get headers from the specified header row (convert to Excel-style 1-based)
+            // Get headers from the specified header row
             $headerRange = 'A' . $headerRow . ':' . $sheet->getHighestColumn() . $headerRow;
             $headerRowData = $sheet->rangeToArray($headerRange, null, true, true, true)[$headerRow];
             $headers = array_map('trim', $headerRowData);
 
-            // Start reading data from the row after the header row
-            foreach ($sheet->getRowIterator($headerRow + 1) as $row) {
-                $rowData = [];
-                $cellIterator = $row->getCellIterator();
-                $cellIterator->setIterateOnlyExistingCells(false); // Iterate all cells, even if empty
-
-                foreach ($cellIterator as $index => $cell) {
-                    $headerName = $headers[$index] ?? null;
-                    if ($headerName) {
-                        $rowData[$headerName] = $cell->getValue();
+            // Chunked reading for better performance
+            $chunkSize = 1000;
+            $startRow = $headerRow + 1;
+            $rowCount = 0;
+            
+            while ($startRow <= $highestRow) {
+                $endRow = min($startRow + $chunkSize - 1, $highestRow);
+                $range = 'A' . $startRow . ':' . $sheet->getHighestColumn() . $endRow;
+                $chunk = $sheet->rangeToArray($range, null, true, false, false);
+                
+                foreach ($chunk as $row) {
+                    $rowData = [];
+                    foreach ($headers as $index => $headerName) {
+                        if ($headerName && isset($row[$index])) {
+                            $rowData[$headerName] = $row[$index];
+                        }
+                    }
+                    
+                    if (count(array_filter($rowData))) {
+                        $data[] = $rowData;
                     }
                 }
-                // Only add non-empty rows
-                if (count(array_filter($rowData))) {
-                    $data[] = $rowData;
+                
+                $startRow = $endRow + 1;
+                $rowCount++;
+                
+                // Periodic garbage collection every 10 chunks
+                if ($rowCount % 10 === 0) {
+                    gc_collect_cycles();
                 }
             }
 
@@ -356,15 +373,10 @@ class PembelianController extends Controller
 
         Log::info('Uploaded file loaded', ['rowCount' => count($data), 'headers' => $headers]);
 
-        // 🔹 Validate required columns
+        // 🔹 Validate required columns in uploaded file
         if (!in_array($uploadedConnector, $headers)) {
             Log::error('Uploaded connector missing', ['column' => $uploadedConnector, 'availableHeaders' => $headers]);
             return response()->json(['error' => "Kolom '{$uploadedConnector}' tidak ditemukan dalam file upload."], 400);
-        }
-
-        if (!in_array($validationConnector, $validationHeaders)) {
-            Log::error('Validation connector missing', ['column' => $validationConnector, 'availableHeaders' => $validationHeaders]);
-            return response()->json(['error' => "Kolom '{$validationConnector}' tidak ditemukan dalam tabel validasi."], 400);
         }
 
         if ($uploadedSum && !in_array($uploadedSum, $headers)) {
@@ -372,80 +384,46 @@ class PembelianController extends Controller
             return response()->json(['error' => "Kolom '{$uploadedSum}' tidak ditemukan dalam file upload."], 400);
         }
 
-        if ($validationSum && !in_array($validationSum, $validationHeaders)) {
-            Log::error('Validation sum field missing', ['column' => $validationSum, 'availableHeaders' => $validationHeaders]);
-            return response()->json(['error' => "Kolom '{$validationSum}' tidak ditemukan dalam tabel validasi."], 400);
-        }
-
-        // A private helper function would be even cleaner, but this works well.
+        // Helper function for robust number parsing
         $cleanAndParseFloat = function ($value) {
             if (!is_string($value)) {
                 return is_numeric($value) ? (float) $value : 0.0;
             }
-            // FIX 1: More robust number parsing. Removes anything not a digit, dot, or minus sign.
-            // This handles currency symbols (Rp, $), thousand separators (,), etc.
+            // Removes anything not a digit, dot, or minus sign
             return (float) preg_replace('/[^\d.-]/', '', $value);
         };
 
-        // 🔹 Build validation map (key to total value)
+        // 🔹 Optimized single-pass validation: build all maps efficiently
         $validationMap = [];
+        $uploadedMapByGroup = [];
+        
+        // Stream validation data and build validation map
         foreach ($validationRecords as $record) {
             $key = trim($record[$validationConnector] ?? '');
-            if ($key === '')
-                continue; // Skip empty keys
+            if ($key === '') continue;
+            
             $value = $cleanAndParseFloat($record[$validationSum] ?? 0);
             $validationMap[$key] = ($validationMap[$key] ?? 0) + $value;
         }
-
-        // 🔹 Create a map of uploaded values by key for validation comparison
-        $uploadedMapByGroup = [];
+        
+        // Stream uploaded data and build uploaded map
         foreach ($data as $row) {
             $key = trim($row[$uploadedConnector] ?? '');
-            if ($key === '')
-                continue; // Skip empty keys
+            if ($key === '') continue;
+            
             $value = $cleanAndParseFloat($row[$uploadedSum] ?? 0);
             $uploadedMapByGroup[$key] = ($uploadedMapByGroup[$key] ?? 0) + $value;
         }
-
+        
         // 🔹 Compare grouped totals and identify invalid groups
         $invalidGroups = [];
-        foreach ($uploadedMapByGroup as $key => $uploadedValue) {
-            $validationValue = $validationMap[$key] ?? null;
-            if ($validationValue === null) {
-                // Check if uploaded value is 0, then categorize as valid with note
-                if ($uploadedValue == 0) {
-                    // This is considered valid - no return value exists in either document
-                    continue; // Skip adding to invalid groups
-                } else {
-                    // Key not found in validation but uploaded has value
-                    $invalidGroups[$key] = [
-                        'discrepancy_category' => 'im_invalid', // Key not found in validation
-                        'error' => 'Key not found in validation data',
-                        'uploaded_total' => $uploadedValue,
-                        'source_total' => 0,
-                        'discrepancy_value' => $uploadedValue // All uploaded value is discrepancy
-                    ];
-                }
-            } else if (abs($uploadedValue - $validationValue) > 1000.01) { // Changed to allow tolerance of -100 to 100
-                $discrepancy_value = $uploadedValue - $validationValue;
-                $invalidGroups[$key] = [
-                    'discrepancy_category' => 'discrepancy', // Value mismatch beyond tolerance
-                    'error' => 'Total mismatch between uploaded and source data beyond tolerance',
-                    'uploaded_total' => $uploadedValue,
-                    'source_total' => $validationValue,
-                    'discrepancy_value' => $discrepancy_value
-                ];
-            }
-            // If the difference is within tolerance (-100 to 100), don't add to invalid groups, treat as matched
-        }
-
-        // 🔹 Create matched groups (similar to invalid groups)
         $matchedGroups = [];
+        
         foreach ($uploadedMapByGroup as $key => $uploadedValue) {
             $validationValue = $validationMap[$key] ?? null;
-
+            
             if ($validationValue === null) {
-                // Check if uploaded value is 0, then categorize as valid with note
+                // Key not found in validation data
                 if ($uploadedValue == 0) {
                     // Retur doesn't exist in validation and uploaded has 0 value
                     $matchedGroups[$key] = [
@@ -454,27 +432,54 @@ class PembelianController extends Controller
                         'difference' => 0,
                         'note' => 'Retur Doesn\'t Record'
                     ];
-                }
-                // else: already added to invalidGroups above
-            } else {
-                $difference = $uploadedValue - $validationValue;
-                if (abs($difference) <= 1000.01) { // Within tolerance
-                    if ($difference == 0) {
-                        $note = 'Sum Matched';
-                    } else {
-                        $note = 'Pembulatan';
-                    }
-                    $matchedGroups[$key] = [
+                } else {
+                    // Key not found in validation but uploaded has value
+                    $invalidGroups[$key] = [
+                        'discrepancy_category' => 'im_invalid',
+                        'error' => 'Key not found in validation data',
                         'uploaded_total' => $uploadedValue,
-                        'source_total' => $validationValue,
-                        'difference' => $difference,
-                        'note' => $note
+                        'source_total' => 0,
+                        'discrepancy_value' => $uploadedValue
                     ];
                 }
-                // else: already added to invalidGroups above
+            } else {
+                // Key exists in both files
+                // Check if either value is 0 or null (missing data case)
+                if ($uploadedValue == 0 || $validationValue == 0) {
+                    // Missing data in one of the files
+                    $invalidGroups[$key] = [
+                        'discrepancy_category' => 'missing',
+                        'error' => 'Key exists in both files but one has missing or zero value',
+                        'uploaded_total' => $uploadedValue,
+                        'source_total' => $validationValue,
+                        'discrepancy_value' => $uploadedValue - $validationValue
+                    ];
+                } else {
+                    // Both values exist and are non-zero
+                    $difference = $uploadedValue - $validationValue;
+                    if (abs($difference) <= 1000.01) {
+                        // Within tolerance
+                        $note = ($difference == 0) ? 'Sum Matched' : 'Pembulatan';
+                        $matchedGroups[$key] = [
+                            'uploaded_total' => $uploadedValue,
+                            'source_total' => $validationValue,
+                            'difference' => $difference,
+                            'note' => $note
+                        ];
+                    } else {
+                        // Value mismatch beyond tolerance
+                        $invalidGroups[$key] = [
+                            'discrepancy_category' => 'discrepancy',
+                            'error' => 'Total mismatch between uploaded and source data beyond tolerance',
+                            'uploaded_total' => $uploadedValue,
+                            'source_total' => $validationValue,
+                            'discrepancy_value' => $difference
+                        ];
+                    }
+                }
             }
         }
-
+        
         // 🔹 Count mismatched records and track matched records
         $invalidRows = [];
         $matchedRows = [];
@@ -517,10 +522,11 @@ class PembelianController extends Controller
             // If this record belongs to a key that is not matched (invalid), count it as mismatched
             if (!$isMatched && !$isIgnoredZero && isset($invalidGroups[$key])) {
                 // This row is part of an invalid group, so count it as mismatched
+                $error = $invalidGroups[$key]['error'];
                 $invalidRows[] = [
                     'row_index' => $index,
                     'key_value' => $key,
-                    'error' => $invalidGroups[$key]['error']
+                    'error' => $error
                 ];
                 $mismatchedRecordCount++;
             } else if ($isMatched && !$isIgnoredZero) {
@@ -534,10 +540,13 @@ class PembelianController extends Controller
             }
         }
 
+        // 🔹 Use invalid groups directly
+        $allInvalidGroups = $invalidGroups;
+        
         // 🔹 Summary and response
         $executionTime = microtime(true) - $startTime;
         Log::info('Validation completed', [
-            'invalidGroupCount' => count($invalidGroups),
+            'invalidGroupCount' => count($allInvalidGroups),
             'invalidRowCount' => $mismatchedRecordCount,
             'executionTime' => $executionTime,
             'status' => $mismatchedRecordCount > 0 ? 'invalid' : 'valid'
@@ -551,16 +560,16 @@ class PembelianController extends Controller
 
         $validationRecord = \App\Models\Validation::create([
             'file_name' => $filename,
-            'role' => auth()->user()?->role ?? 'unknown', // assuming user is authenticated, fallback to 'unknown'
-            'user_id' => auth()->user()?->id ?? null, // assuming user is authenticated, fallback to null
+            'role' => auth()->user()?->role ?? 'unknown',
+            'user_id' => auth()->user()?->id ?? null,
             'document_type' => 'Pembelian',
-            'document_category' => ucfirst(strtolower($type)), // Reguler, Retur, Urgent
+            'document_category' => ucfirst(strtolower($type)),
             'score' => $score,
             'total_records' => $totalRecords,
             'matched_records' => $matchedRecords,
             'mismatched_records' => $mismatchedRecords,
             'validation_details' => [
-                'invalid_groups' => $invalidGroups,
+                'invalid_groups' => $allInvalidGroups,
                 'invalid_rows' => $invalidRows,
                 'matched_groups' => $matchedGroups,
                 'matched_rows' => $matchedRows,
@@ -568,10 +577,10 @@ class PembelianController extends Controller
         ]);
 
         return response()->json([
-            'status' => count($invalidGroups) > 0 ? 'invalid' : 'valid',
-            'invalid_groups' => $invalidGroups,
+            'status' => count($allInvalidGroups) > 0 ? 'invalid' : 'valid',
+            'invalid_groups' => $allInvalidGroups,
             'invalid_rows' => $invalidRows,
-            'validation_id' => $validationRecord->id, // Return the validation record ID for redirect
+            'validation_id' => $validationRecord->id,
         ]);
     }
 
@@ -862,6 +871,7 @@ class PembelianController extends Controller
             'total' => $validation->total_records,
             'mismatched' => $validation->mismatched_records,
             'invalidGroups' => count($validation->validation_details['invalid_groups'] ?? []),
+            'matchedGroups' => count($validation->validation_details['matched_groups'] ?? []),
             'isValid' => $validation->mismatched_records === 0,
         ];
 
@@ -1085,8 +1095,12 @@ class PembelianController extends Controller
                 $aValue = $a[$sortKey] ?? null;
                 $bValue = $b[$sortKey] ?? null;
 
+                // Handle sorting for discrepancy_value by absolute value
+                if ($sortKey === 'discrepancy_value') {
+                    $result = abs($aValue) <=> abs($bValue);
+                } 
                 // Handle comparison based on data type
-                if (is_string($aValue) && is_string($bValue)) {
+                else if (is_string($aValue) && is_string($bValue)) {
                     $result = strcasecmp($aValue, $bValue);
                 } else {
                     $result = $aValue <=> $bValue;
@@ -1178,8 +1192,12 @@ class PembelianController extends Controller
                 $aValue = $a[$sortKey] ?? null;
                 $bValue = $b[$sortKey] ?? null;
 
+                // Handle sorting for discrepancy_value by absolute value
+                if ($sortKey === 'discrepancy_value') {
+                    $result = abs($aValue) <=> abs($bValue);
+                } 
                 // Handle comparison based on data type
-                if (is_string($aValue) && is_string($bValue)) {
+                else if (is_string($aValue) && is_string($bValue)) {
                     $result = strcasecmp($aValue, $bValue);
                 } else {
                     $result = $aValue <=> $bValue;

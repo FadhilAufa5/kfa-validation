@@ -18,7 +18,6 @@ import {
     FileX2,
     Loader2,
     Scale,
-    Users,
     XCircle,
 } from 'lucide-react';
 
@@ -52,6 +51,7 @@ interface ValidationData {
     total: number;
     mismatched: number;
     invalidGroups: number;
+    matchedGroups: number;
     isValid: boolean;
 }
 
@@ -143,8 +143,12 @@ export default function PembelianShow() {
     const [popupLoading, setPopupLoading] = useState(false);
 
     // State for all chart data (not paginated)
-    const [allInvalidGroups, setAllInvalidGroups] = useState<ValidationGroupPaginated[]>([]);
-    const [allMatchedGroups, setAllMatchedGroups] = useState<MatchedGroupPaginated[]>([]);
+    const [allInvalidGroups, setAllInvalidGroups] = useState<
+        ValidationGroupPaginated[]
+    >([]);
+    const [allMatchedGroups, setAllMatchedGroups] = useState<
+        MatchedGroupPaginated[]
+    >([]);
 
     // Loading state jika data belum ada
     if (!validationData) {
@@ -177,10 +181,12 @@ export default function PembelianShow() {
                 value: validationData.total.toLocaleString('id-ID'),
                 icon: Scale,
             },
+
             {
                 title: 'Total Matched Records',
                 value: validationData.matched.toLocaleString('id-ID'),
                 icon: FileCheck2,
+                groups: validationData.matchedGroups,
                 color:
                     validationData.matched > 0
                         ? 'text-green-600'
@@ -190,18 +196,10 @@ export default function PembelianShow() {
                 title: 'Total Mismatched Records',
                 value: validationData.mismatched.toLocaleString('id-ID'),
                 icon: FileX2,
+                groups: validationData.invalidGroups,
                 color:
                     validationData.mismatched > 0
                         ? 'text-red-600'
-                        : 'text-muted-foreground',
-            },
-            {
-                title: 'Total Mismatched Groups',
-                value: validationData.invalidGroups.toLocaleString('id-ID'),
-                icon: Users,
-                color:
-                    validationData.invalidGroups > 0
-                        ? 'text-orange-600'
                         : 'text-muted-foreground',
             },
         ],
@@ -210,6 +208,8 @@ export default function PembelianShow() {
             validationData.total,
             validationData.matched,
             validationData.mismatched,
+            validationData.invalidGroups,
+            validationData.matchedGroups,
         ],
     );
 
@@ -475,9 +475,12 @@ export default function PembelianShow() {
                 </div>
 
                 {/* Horizontal Metrics Layout */}
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     {stats.map((stat, index) => (
-                        <div key={index} className="rounded-lg border bg-card text-card-foreground shadow-sm">
+                        <div
+                            key={index}
+                            className="rounded-lg border bg-card text-card-foreground shadow-sm"
+                        >
                             <div className="flex flex-row items-center justify-between p-3">
                                 <div>
                                     <CardTitle className="text-xs font-medium text-muted-foreground">
@@ -494,6 +497,16 @@ export default function PembelianShow() {
                                 >
                                     {stat.value}
                                 </div>
+                                {stat.groups !== undefined && (
+                                    <div className="mt-1 flex items-center gap-1">
+                                        <span className="text-xs text-muted-foreground">
+                                            {stat.groups.toLocaleString(
+                                                'id-ID',
+                                            )}{' '}
+                                            Groups
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -594,11 +607,12 @@ export default function PembelianShow() {
                                     )
                                         .slice(0, 5) // Display up to 5 categories
                                         .map((category) => {
-                                            const count = allInvalidGroups.filter(
-                                                (g) =>
-                                                    g.discrepancy_category ===
-                                                    category,
-                                            ).length;
+                                            const count =
+                                                allInvalidGroups.filter(
+                                                    (g) =>
+                                                        g.discrepancy_category ===
+                                                        category,
+                                                ).length;
                                             const maxCount = Math.max(
                                                 ...Array.from(
                                                     new Set(
@@ -662,11 +676,12 @@ export default function PembelianShow() {
                                     )
                                         .slice(0, 5)
                                         .map((sourceLabel) => {
-                                            const count = allInvalidGroups.filter(
-                                                (g) =>
-                                                    g.sourceLabel ===
-                                                    sourceLabel,
-                                            ).length;
+                                            const count =
+                                                allInvalidGroups.filter(
+                                                    (g) =>
+                                                        g.sourceLabel ===
+                                                        sourceLabel,
+                                                ).length;
                                             const maxCount = Math.max(
                                                 ...Array.from(
                                                     new Set(
@@ -716,37 +731,60 @@ export default function PembelianShow() {
 
                 {/* Second Row of Charts */}
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    {/* Horizontal Bar Chart for Invalid Data Score */}
+                    {/* Top 5 Rows with Highest Selisih */}
                     <Card>
                         <CardHeader>
-                            <CardTitle>Distribusi Nilai Diskrepansi</CardTitle>
+                            <CardTitle>Top 5 Baris dengan Selisih Tertinggi</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-2">
                                 {allInvalidGroups
-                                    .slice(0, 5)
                                     .sort(
                                         (a, b) =>
                                             Math.abs(b.discrepancy_value) -
                                             Math.abs(a.discrepancy_value),
                                     )
-                                    .map((item) => (
-                                        <div
-                                            key={item.key}
-                                            className="flex items-center gap-2"
-                                        >
-                                            <span className="w-24 truncate text-xs">
-                                                {item.key}
-                                            </span>
-                                            <div className="flex-1 overflow-hidden text-right">
-                                                <span className="text-xs font-medium text-gray-900">
-                                                    {Math.abs(item.discrepancy_value).toLocaleString(
-                                                        'id-ID',
-                                                    )}
+                                    .slice(0, 5)
+                                    .map((item, index) => {
+                                        const absValue = Math.abs(item.discrepancy_value);
+                                        const maxValue = Math.max(
+                                            ...allInvalidGroups.map(g => Math.abs(g.discrepancy_value))
+                                        );
+                                        const barWidth = maxValue > 0 ? (absValue / maxValue) * 100 : 0;
+                                        
+                                        return (
+                                            <div
+                                                key={item.key}
+                                                className="flex items-center gap-2"
+                                            >
+                                                <div className="flex items-center gap-2 w-8">
+                                                    <span className="text-xs font-medium text-muted-foreground">
+                                                        #{index + 1}
+                                                    </span>
+                                                </div>
+                                                <span className="w-32 truncate text-xs">
+                                                    {item.key}
                                                 </span>
+                                                <div className="relative h-6 flex-1 rounded-full bg-gray-200">
+                                                    <div
+                                                        className="flex h-6 items-center justify-end rounded-full bg-red-500 pr-2"
+                                                        style={{
+                                                            width: `${barWidth}%`,
+                                                        }}
+                                                    >
+                                                        <span className="text-xs font-medium text-white">
+                                                            {absValue.toLocaleString('id-ID')}
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
+                                {allInvalidGroups.length === 0 && (
+                                    <div className="text-center text-muted-foreground py-4">
+                                        Tidak ada data selisih untuk ditampilkan
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -760,18 +798,20 @@ export default function PembelianShow() {
                             <div className="space-y-2">
                                 {Array.from(
                                     new Set(
-                                        allMatchedGroups.map(
-                                            (g) => g.note,
-                                        ),
+                                        allMatchedGroups.map((g) => g.note),
                                     ),
                                 )
                                     .slice(0, 5)
                                     .map((note) => {
-                                        const count = allMatchedGroups.filter((g) => g.note === note).length;
+                                        const count = allMatchedGroups.filter(
+                                            (g) => g.note === note,
+                                        ).length;
                                         const maxCount = Math.max(
                                             ...Array.from(
                                                 new Set(
-                                                    allMatchedGroups.map((g) => g.note),
+                                                    allMatchedGroups.map(
+                                                        (g) => g.note,
+                                                    ),
                                                 ),
                                             ).map(
                                                 (cat) =>
