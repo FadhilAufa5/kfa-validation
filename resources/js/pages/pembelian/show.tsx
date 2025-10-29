@@ -35,11 +35,13 @@ interface ValidationGroupPaginated {
 }
 
 interface MatchedGroupPaginated {
+    row_index: number;
     key: string;
     uploaded_total: number;
     source_total: number;
     difference: number;
     note: string;
+    is_individual_row: boolean;
 }
 
 interface ValidationData {
@@ -150,20 +152,10 @@ export default function PembelianShow() {
         MatchedGroupPaginated[]
     >([]);
 
-    // Loading state jika data belum ada
-    if (!validationData) {
-        return (
-            <AppLayout breadcrumbs={breadcrumbs}>
-                <Head title={`Loading Detail Validasi...`} />
-                <div className="flex h-64 items-center justify-center p-8">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                    <p className="ml-4 text-muted-foreground">
-                        Memuat data validasi...
-                    </p>
-                </div>
-            </AppLayout>
-        );
-    }
+    // Calculate total groups (invalid + matched)
+    const totalGroups = useMemo(() => {
+        return validationData.invalidGroups + validationData.matchedGroups;
+    }, [validationData.invalidGroups, validationData.matchedGroups]);
 
     // Data untuk kartu statistik
     const stats = useMemo(
@@ -180,6 +172,7 @@ export default function PembelianShow() {
                 title: 'Total Records Processed',
                 value: validationData.total.toLocaleString('id-ID'),
                 icon: Scale,
+                groups: totalGroups,
             },
 
             {
@@ -210,6 +203,7 @@ export default function PembelianShow() {
             validationData.mismatched,
             validationData.invalidGroups,
             validationData.matchedGroups,
+            totalGroups,
         ],
     );
 
@@ -440,6 +434,21 @@ export default function PembelianShow() {
         }
     };
 
+    // Loading state jika data belum ada
+    if (!validationData) {
+        return (
+            <AppLayout breadcrumbs={breadcrumbs}>
+                <Head title={`Loading Detail Validasi...`} />
+                <div className="flex h-64 items-center justify-center p-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <p className="ml-4 text-muted-foreground">
+                        Memuat data validasi...
+                    </p>
+                </div>
+            </AppLayout>
+        );
+    }
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Detail Validasi #${validationId}`} />
@@ -583,7 +592,7 @@ export default function PembelianShow() {
                                 <div className="flex items-center gap-2">
                                     <div className="h-3 w-3 rounded-full bg-orange-500"></div>
                                     <span className="text-sm">
-                                        Groups: {validationData.invalidGroups}
+                                        Groups: {totalGroups}
                                     </span>
                                 </div>
                             </div>

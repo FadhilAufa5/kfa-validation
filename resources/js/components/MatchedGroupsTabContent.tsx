@@ -31,11 +31,13 @@ import React from 'react';
 import { Loader2, Search } from 'lucide-react';
 
 interface MatchedGroupPaginated {
+    row_index: number;
     key: string;
     uploaded_total: number;
     source_total: number;
     difference: number;
     note: string;
+    is_individual_row: boolean;
 }
 
 // Helper function to format numbers as IDR currency
@@ -137,7 +139,7 @@ const MatchedGroupsTabContent = React.memo(
             </div>
 
             <h3 className="text-lg font-semibold">
-                Grup Data Valid (Matched Groups):
+                Baris Data Valid (Matched Records):
             </h3>
             {loading ? (
                 <div className="flex items-center justify-center py-8">
@@ -152,6 +154,14 @@ const MatchedGroupsTabContent = React.memo(
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead
+                                        className="cursor-pointer"
+                                        onClick={() =>
+                                            requestMatchedSort('row_index')
+                                        }
+                                    >
+                                        Baris {getMatchedSortIndicator('row_index')}
+                                    </TableHead>
                                     <TableHead
                                         className="cursor-pointer"
                                         onClick={() =>
@@ -203,28 +213,31 @@ const MatchedGroupsTabContent = React.memo(
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredAndSortedMatchedGroups.map((group) => (
-                                    <TableRow key={group.key}>
+                                {filteredAndSortedMatchedGroups.map((record) => (
+                                    <TableRow key={`${record.key}-${record.row_index}`}>
+                                        <TableCell className="text-muted-foreground">
+                                            {record.row_index + 1}
+                                        </TableCell>
                                         <TableCell
                                             className="cursor-pointer font-medium text-blue-600 hover:text-blue-800 hover:underline"
                                             onClick={() =>
-                                                handleKeyClick(group.key)
+                                                handleKeyClick(record.key)
                                             }
                                         >
-                                            {group.key}
+                                            {record.key}
                                         </TableCell>
                                         <TableCell>
-                                            {formatIDR(group.uploaded_total)}
+                                            {formatIDR(record.uploaded_total)}
                                         </TableCell>
                                         <TableCell>
-                                            {formatIDR(group.source_total)}
+                                            {formatIDR(record.source_total)}
                                         </TableCell>
                                         <TableCell>
-                                            {formatIDR(group.difference)}
+                                            {formatIDR(record.difference)}
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="secondary">
-                                                {group.note}
+                                                {record.note}
                                             </Badge>
                                         </TableCell>
                                     </TableRow>

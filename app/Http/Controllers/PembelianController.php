@@ -558,6 +558,17 @@ class PembelianController extends Controller
         $matchedRecords = $totalRecords - $mismatchedRecords;
         $score = $totalRecords > 0 ? round(($matchedRecords / $totalRecords) * 100, 2) : 100.00;
 
+        // 🔹 Debug logging to understand the mismatch
+        Log::info('Matched vs Mismatch Analysis', [
+            'matchedGroupsCount' => count($matchedGroups),
+            'matchedRowsCount' => count($matchedRows),
+            'mismatchedRecordCount' => $mismatchedRecordCount,
+            'totalRecords' => $totalRecords,
+            'matched_records_calculation' => $totalRecords - $mismatchedRecordCount,
+            'sampleMatchedGroups' => array_slice($matchedGroups, 0, 3, true),
+            'sampleMatchedRows' => array_slice($matchedRows, 0, 3, true)
+        ]);
+
         $validationRecord = \App\Models\Validation::create([
             'file_name' => $filename,
             'role' => auth()->user()?->role ?? 'unknown',
@@ -1006,7 +1017,7 @@ class PembelianController extends Controller
     }
 
     /**
-     * Get all matched groups data for charts (without pagination)
+     * Get all matched records data for charts (without pagination)
      */
     public function getAllMatchedGroups($id, Request $request)
     {
@@ -1016,12 +1027,26 @@ class PembelianController extends Controller
             return response()->json(['error' => 'Validation data not found'], 404);
         }
 
-        $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
+        // Get individual matched rows
+        $matchedRows = $validation->validation_details['matched_rows'] ?? [];
 
-        // Convert to array format for easier processing
+        // Convert to array format and add group information for display
         $allItems = [];
-        foreach ($matchedGroups as $key => $group) {
-            $allItems[] = array_merge(['key' => $key], $group);
+        foreach ($matchedRows as $row) {
+            $key = $row['key_value'];
+            
+            // Try to get the group information to display notes
+            $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
+            $groupInfo = $matchedGroups[$key] ?? null;
+            
+            $allItems[] = [
+                'key' => $key,
+                'uploaded_total' => $row['uploaded_total'],
+                'source_total' => $row['validation_source_total'],
+                'difference' => $row['uploaded_total'] - ($row['validation_source_total'] ?? 0),
+                'note' => $groupInfo['note'] ?? 'Sum Matched',
+                'is_individual_row' => true,
+            ];
         }
 
         return response()->json($allItems);
@@ -1140,7 +1165,7 @@ class PembelianController extends Controller
     }
 
     /**
-     * Get paginated matched groups data
+     * Get paginated matched records data (individual rows)
      */
     public function getMatchedRecords($id, Request $request)
     {
@@ -1150,12 +1175,28 @@ class PembelianController extends Controller
             return response()->json(['error' => 'Validation data not found'], 404);
         }
 
-        $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
+        // Get individual matched rows, not matched groups
+        $matchedRows = $validation->validation_details['matched_rows'] ?? [];
 
-        // Convert to array format for easier processing
+        // Convert to array format and add group information for display
         $allItems = [];
-        foreach ($matchedGroups as $key => $group) {
-            $allItems[] = array_merge(['key' => $key], $group);
+        foreach ($matchedRows as $row) {
+            $key = $row['key_value'];
+            
+            // Try to get the group information to display totals and notes
+            $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
+            $groupInfo = $matchedGroups[$key] ?? null;
+            
+            $allItems[] = [
+                'row_index' => $row['row_index'],
+                'key' => $key,
+                'uploaded_total' => $row['uploaded_total'],
+                'source_total' => $row['validation_source_total'],
+                'difference' => $row['uploaded_total'] - ($row['validation_source_total'] ?? 0),
+                'note' => $groupInfo['note'] ?? 'Sum Matched',
+                // Add additional row-specific data
+                'is_individual_row' => true,
+            ];
         }
 
         // Extract unique notes for filters
@@ -1166,7 +1207,7 @@ class PembelianController extends Controller
         // Get request parameters for filtering and pagination
         $searchTerm = $request->input('search', '');
         $noteFilter = $request->input('note', '');
-        $sortKey = $request->input('sort_key', 'key');
+        $sortKey = $request->input('sort_key', 'row_index');
         $sortDirection = $request->input('sort_direction', 'asc');
         $page = $request->input('page', 1);
         $perPage = $request->input('per_page', 10);
@@ -1192,8 +1233,8 @@ class PembelianController extends Controller
                 $aValue = $a[$sortKey] ?? null;
                 $bValue = $b[$sortKey] ?? null;
 
-                // Handle sorting for discrepancy_value by absolute value
-                if ($sortKey === 'discrepancy_value') {
+                // Handle sorting for difference by absolute value
+                if ($sortKey === 'difference') {
                     $result = abs($aValue) <=> abs($bValue);
                 } 
                 // Handle comparison based on data type
