@@ -54,7 +54,7 @@ const penjualanNavItems: NavItem[] = [
     },
     {
         title: 'History Penjualan',
-        href: '/historypenjualan',
+        href: '/history/penjualan',
         icon: History,
     },
 ];

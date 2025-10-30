@@ -87,14 +87,14 @@ type ValidationPageProps = {
     validationId: string;
 };
 
-export default function PembelianShow() {
+export default function PenjualanShow() {
     const { props } = usePage<ValidationPageProps>();
     const { validationData, validationId } = props;
 
     const breadcrumbs = useMemo(
         () => [
-            { title: 'Pembelian', href: '/pembelian' },
-            { title: 'History Pembelian', href: '/history/pembelian' },
+            { title: 'Penjualan', href: '/penjualan' },
+            { title: 'History Penjualan', href: '/history/penjualan' },
             { title: `Detail Validasi #${validationId}`, href: '#' },
         ],
         [validationId],
@@ -213,7 +213,7 @@ export default function PembelianShow() {
             setInvalidGroupsLoading(true);
             try {
                 const response = await axios.get(
-                    `/pembelian/${validationId}/invalid-groups`,
+                    `/penjualan/${validationId}/invalid-groups`,
                     {
                         params: {
                             search: searchTerm,
@@ -250,7 +250,7 @@ export default function PembelianShow() {
         const fetchAllInvalidGroups = async () => {
             try {
                 const response = await axios.get(
-                    `/pembelian/${validationId}/invalid-groups/all`,
+                    `/penjualan/${validationId}/invalid-groups/all`,
                 );
                 setAllInvalidGroups(response.data);
             } catch (error) {
@@ -266,7 +266,7 @@ export default function PembelianShow() {
         const fetchAllMatchedGroups = async () => {
             try {
                 const response = await axios.get(
-                    `/pembelian/${validationId}/matched-records/all`,
+                    `/penjualan/${validationId}/matched-records/all`,
                 );
                 setAllMatchedGroups(response.data);
             } catch (error) {
@@ -283,7 +283,7 @@ export default function PembelianShow() {
             setMatchedGroupsLoading(true);
             try {
                 const response = await axios.get(
-                    `/pembelian/${validationId}/matched-records`,
+                    `/penjualan/${validationId}/matched-records`,
                     {
                         params: {
                             search: matchedSearchTerm,
@@ -375,10 +375,10 @@ export default function PembelianShow() {
         try {
             // Fetch both documents in parallel
             const [uploadedResponse, validationResponse] = await Promise.all([
-                axios.get(`/pembelian/${validationId}/document-comparison`, {
+                axios.get(`/penjualan/${validationId}/document-comparison`, {
                     params: { key, type: 'uploaded' },
                 }),
-                axios.get(`/pembelian/${validationId}/document-comparison`, {
+                axios.get(`/penjualan/${validationId}/document-comparison`, {
                     params: { key, type: 'validation' },
                 }),
             ]);
@@ -475,7 +475,7 @@ export default function PembelianShow() {
                             </Badge>
                         </div>
                     </div>
-                    <Link href="/history/pembelian">
+                    <Link href="/history/penjualan">
                         <Button variant="outline" className="w-full sm:w-auto">
                             <ArrowLeft className="mr-2 h-4 w-4" />
                             Kembali ke History

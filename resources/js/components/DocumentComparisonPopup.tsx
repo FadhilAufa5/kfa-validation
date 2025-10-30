@@ -32,7 +32,7 @@ const formatIDR = (value: number | string | null | undefined): string => {
 };
 
 // Helper function to render document data, robustly handling different formats.
-const renderDocumentData = (data: any[] | null) => {
+const renderDocumentData = (data: unknown[] | null) => {
     if (!data || data.length === 0) {
         return (
             <div className="py-4 text-center text-sm text-muted-foreground">
@@ -42,20 +42,25 @@ const renderDocumentData = (data: any[] | null) => {
     }
 
     let headers: string[] = [];
-    let dataRows: any[] = [];
-    const isArrayOfObjects =
+    let dataRows: unknown[] = [];
+    
+    // Handle backend specific format: first element is headers, rest are data rows
+    if (data.length > 0 && Array.isArray(data[0])) {
+        headers = data[0].map(String);
+        dataRows = data.slice(1);
+    } 
+    // Handle array of objects (each object has keys as headers)
+    else if (
         data.length > 0 &&
         typeof data[0] === 'object' &&
         data[0] !== null &&
-        !Array.isArray(data[0]);
-
-    if (isArrayOfObjects) {
+        !Array.isArray(data[0])
+    ) {
         headers = Object.keys(data[0]);
         dataRows = data;
-    } else if (data.length > 0 && Array.isArray(data[0])) {
-        headers = data[0].map(String);
-        dataRows = data.slice(1);
-    } else {
+    } 
+    // Fallback for other formats
+    else {
         return (
             <div className="py-4 text-center text-sm text-muted-foreground">
                 Format data tidak dapat ditampilkan.
@@ -71,7 +76,7 @@ const renderDocumentData = (data: any[] | null) => {
         );
     }
 
-    const formatCellData = (value: any, header: string): { value: string } => {
+    const formatCellData = (value: unknown, header: string): { value: string } => {
         if (value === null || value === undefined || value === '') {
             return { value: '-' };
         }
@@ -81,7 +86,7 @@ const renderDocumentData = (data: any[] | null) => {
             return { value: stringValue };
         }
 
-        const parsedValue = parseFloat(stringValue.replace(/[^\d\.-]/g, ''));
+        const parsedValue = parseFloat(stringValue.replace(/[^\d.-]/g, ''));
         let isFinancialField = false;
         const lowerHeader = header.toLowerCase().trim();
 
@@ -165,8 +170,8 @@ const renderDocumentData = (data: any[] | null) => {
 interface DocumentComparisonPopupProps {
     isOpen: boolean;
     onClose: () => void;
-    uploadedDocData: any[] | null;
-    validationDocData: any[] | null;
+    uploadedDocData: unknown[] | null;
+    validationDocData: unknown[] | null;
     connectorKey: string;
     uploadedTotal: number | null;
     sourceTotal: number | null;

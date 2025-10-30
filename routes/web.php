@@ -21,11 +21,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 // penjualan
 Route::get('/penjualan', [PenjualanController::class, 'index'])->name('penjualan.index');
-Route::get('/historypenjualan', [PenjualanController::class, 'history'])->name('penjualan.history');
+Route::get('/history/penjualan', [PenjualanController::class, 'history'])->name('penjualan.history');
 Route::get('/penjualan/reguler', [PenjualanController::class, 'reguler'])->name('penjualan.reguler');
 Route::get('/penjualan/ecommerce', [PenjualanController::class, 'ecommerce'])->name('penjualan.ecommerce');
 Route::get('/penjualan/debitur', [PenjualanController::class, 'debitur'])->name('penjualan.debitur');
 Route::get('/penjualan/konsi', [PenjualanController::class, 'konsi'])->name('penjualan.konsi');
+
+// Penjualan file operations
+Route::post('/penjualan/save/{type}', [PenjualanController::class, 'save'])->name('penjualan.save');
+Route::post('/penjualan/validate-{type}', [PenjualanController::class, 'validateFile'])->name('penjualan.validateFile');
+Route::get('/penjualan/preview/{filename}', [PenjualanController::class, 'preview'])->name('penjualan.preview');
+Route::post('/penjualan/process/{filename}', [PenjualanController::class, 'processWithHeader'])->name('penjualan.processWithHeader');
+
+// Penjualan validation results
+Route::get('penjualan/{id}', [PenjualanController::class, 'show'])->name('penjualan.show');
+Route::get('penjualan/{id}/invalid-groups', [PenjualanController::class, 'getInvalidGroups'])->name('penjualan.invalid-groups');
+Route::get('penjualan/{id}/invalid-groups/all', [PenjualanController::class, 'getAllInvalidGroups'])->name('penjualan.invalid-groups-all');
+Route::get('penjualan/{id}/matched-records', [PenjualanController::class, 'getMatchedRecords'])->name('penjualan.matched-records');
+Route::get('penjualan/{id}/matched-records/all', [PenjualanController::class, 'getAllMatchedGroups'])->name('penjualan.matched-records-all');
+Route::get('penjualan/{id}/document-comparison', [PenjualanController::class, 'getDocumentComparisonData'])->name('penjualan.document-comparison');
+Route::get('penjualan/history/data', [PenjualanController::class, 'getValidationHistory'])->name('penjualan.history.data');
 
 // pembelian
 Route::get('/pembelian', [PembelianController::class, 'index'])->name('pembelian.index');

@@ -68,95 +68,6 @@ class PembelianController extends Controller
         ]);
     }
 
-    // public function store(Request $request, $type)
-    // {
-    //     $request->validate([
-    //         'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-    //     ]);
-
-    //     $importMap = [
-    //         'reguler' => \App\Imports\Pembelian\RegularImport::class,
-    //         'retur' => \App\Imports\Pembelian\ReturImport::class,
-    //         'urgent' => \App\Imports\Pembelian\UrgentImport::class,
-    //     ];
-
-    //     $key = strtolower($type);
-
-    //     if (!isset($importMap[$key])) {
-    //         return back()->with('error', 'Tipe dokumen tidak valid.');
-    //     }
-
-    //     try {
-    //         Excel::import(new $importMap[$key], $request->file('document'));
-    //     } catch (\Throwable $e) {
-    //         \Log::error('Excel import error', ['message' => $e->getMessage()]);
-    //         return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
-    //     }
-
-    //     return back()->with('success', 'Dokumen ' . ucfirst($type) . ' berhasil diimpor!');
-    // }
-
-
-    // public function storeRetur(Request $request)
-    // {
-    //     $request->validate([
-    //         'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-    //     ]);
-
-    //     try {
-    //         Excel::import(new PembelianReturImport, $request->file('document'));
-    //         return back()->with('success', 'Data berhasil diimpor!');
-    //     } catch (\Maatwebsite\Excel\Validators\ValidationException $e) {
-    //         // Handle validation errors inside the Excel file
-    //         $failures = $e->failures();
-    //         $messages = [];
-
-    //         foreach ($failures as $failure) {
-    //             $messages[] = 'Baris ' . $failure->row() . ': ' . implode(', ', $failure->errors());
-    //         }
-
-    //         \Log::error('Excel validation error', ['errors' => $messages]);
-
-    //         return back()->with('error', 'Kesalahan validasi pada file Excel.')->with('failures', $messages);
-    //     } catch (\Throwable $e) {
-    //         \Log::error('Excel import error', ['message' => $e->getMessage()]);
-    //         return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
-    //     }
-    // }
-
-
-    // public function storeReguler(Request $request)
-    // {
-    //     $request->validate([
-    //         'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-    //     ]);
-
-    //     try {
-    //         Excel::import(new PembelianRegulerImport, $request->file('document'));
-    //     } catch (\Throwable $e) {
-    //         \Log::error('Excel import error', ['message' => $e->getMessage()]);
-    //         return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
-    //     }
-
-    //     return back()->with('success', 'Dokumen Reguler berhasil diimpor!');
-    // }
-
-    // public function storeUrgent(Request $request)
-    // {
-    //     $request->validate([
-    //         'document' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-    //     ]);
-
-    //     try {
-    //         Excel::import(new PembelianUrgentImport, $request->file('document'));
-    //     } catch (\Throwable $e) {
-    //         \Log::error('Excel import error', ['message' => $e->getMessage()]);
-    //         return back()->with('error', 'Terjadi kesalahan saat mengimpor: ' . $e->getMessage());
-    //     }
-
-    //     return back()->with('success', 'Dokumen Urgent berhasil diimpor!');
-    // }
-
     public function save(Request $request, $type)
     {
         $request->validate([
@@ -306,35 +217,19 @@ class PembelianController extends Controller
             $headerRowData = $sheet->rangeToArray($headerRange, null, true, true, true)[$headerRow];
             $headers = array_map('trim', $headerRowData);
 
-            // Chunked reading for better performance
-            $chunkSize = 1000;
-            $startRow = $headerRow + 1;
-            $rowCount = 0;
-            
-            while ($startRow <= $highestRow) {
-                $endRow = min($startRow + $chunkSize - 1, $highestRow);
-                $range = 'A' . $startRow . ':' . $sheet->getHighestColumn() . $endRow;
-                $chunk = $sheet->rangeToArray($range, null, true, false, false);
-                
-                foreach ($chunk as $row) {
-                    $rowData = [];
-                    foreach ($headers as $index => $headerName) {
-                        if ($headerName && isset($row[$index])) {
-                            $rowData[$headerName] = $row[$index];
-                        }
-                    }
-                    
-                    if (count(array_filter($rowData))) {
-                        $data[] = $rowData;
+            // Read all data rows after header without chunking
+            $dataRows = $sheet->rangeToArray('A' . ($headerRow + 1) . ':' . $sheet->getHighestColumn() . $highestRow, null, true, false, false);
+
+            foreach ($dataRows as $row) {
+                $rowData = [];
+                foreach ($headers as $index => $headerName) {
+                    if ($headerName && isset($row[$index])) {
+                        $rowData[$headerName] = $row[$index];
                     }
                 }
-                
-                $startRow = $endRow + 1;
-                $rowCount++;
-                
-                // Periodic garbage collection every 10 chunks
-                if ($rowCount % 10 === 0) {
-                    gc_collect_cycles();
+
+                if (count(array_filter($rowData))) {
+                    $data[] = $rowData;
                 }
             }
 
@@ -396,32 +291,34 @@ class PembelianController extends Controller
         // 🔹 Optimized single-pass validation: build all maps efficiently
         $validationMap = [];
         $uploadedMapByGroup = [];
-        
+
         // Stream validation data and build validation map
         foreach ($validationRecords as $record) {
             $key = trim($record[$validationConnector] ?? '');
-            if ($key === '') continue;
-            
+            if ($key === '')
+                continue;
+
             $value = $cleanAndParseFloat($record[$validationSum] ?? 0);
             $validationMap[$key] = ($validationMap[$key] ?? 0) + $value;
         }
-        
+
         // Stream uploaded data and build uploaded map
         foreach ($data as $row) {
             $key = trim($row[$uploadedConnector] ?? '');
-            if ($key === '') continue;
-            
+            if ($key === '')
+                continue;
+
             $value = $cleanAndParseFloat($row[$uploadedSum] ?? 0);
             $uploadedMapByGroup[$key] = ($uploadedMapByGroup[$key] ?? 0) + $value;
         }
-        
+
         // 🔹 Compare grouped totals and identify invalid groups
         $invalidGroups = [];
         $matchedGroups = [];
-        
+
         foreach ($uploadedMapByGroup as $key => $uploadedValue) {
             $validationValue = $validationMap[$key] ?? null;
-            
+
             if ($validationValue === null) {
                 // Key not found in validation data
                 if ($uploadedValue == 0) {
@@ -479,7 +376,7 @@ class PembelianController extends Controller
                 }
             }
         }
-        
+
         // 🔹 Count mismatched records and track matched records
         $invalidRows = [];
         $matchedRows = [];
@@ -542,7 +439,7 @@ class PembelianController extends Controller
 
         // 🔹 Use invalid groups directly
         $allInvalidGroups = $invalidGroups;
-        
+
         // 🔹 Summary and response
         $executionTime = microtime(true) - $startTime;
         Log::info('Validation completed', [
@@ -813,32 +710,6 @@ class PembelianController extends Controller
         }
     }
 
-    public function validateDocument(Request $request)
-    {
-        $type = $request->type;
-        $docType = $request->docType;
-        $fileName = $request->fileName;
-
-        $uploadedPath = storage_path("app/uploads/$fileName");
-        $uploaded = collect(array_map('str_getcsv', file($uploadedPath)))->skip(1);
-
-        $rule = config("document_validation.$type.$docType");
-        [$uploadKey, $dbKey] = $rule['connector'];
-        [$uploadSum, $dbSum] = $rule['sum'];
-        $table = $rule['table'];
-
-        $validation = DB::table($table)->get()->map(fn($r) => (array) $r);
-
-        $invalidRows = $uploaded->filter(function ($row) use ($validation, $uploadKey, $dbKey, $uploadSum, $dbSum) {
-            $match = $validation->firstWhere($dbKey, $row[$uploadKey] ?? null);
-            if (!$match)
-                return true; // connector not found
-            return floatval($row[$uploadSum] ?? 0) != floatval($match[$dbSum] ?? 0); // value mismatch
-        });
-
-        return response()->json(['invalid_rows' => $invalidRows->values()]);
-    }
-
     private function utf8ize($data)
     {
         if (is_array($data)) {
@@ -1030,15 +901,16 @@ class PembelianController extends Controller
         // Get individual matched rows
         $matchedRows = $validation->validation_details['matched_rows'] ?? [];
 
-        // Convert to array format and add group information for display
+        // Get matched groups once to avoid repeated lookups
+        $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
+
+        // Process all matched records without limits
         $allItems = [];
+
         foreach ($matchedRows as $row) {
             $key = $row['key_value'];
-            
-            // Try to get the group information to display notes
-            $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
             $groupInfo = $matchedGroups[$key] ?? null;
-            
+
             $allItems[] = [
                 'key' => $key,
                 'uploaded_total' => $row['uploaded_total'],
@@ -1123,7 +995,7 @@ class PembelianController extends Controller
                 // Handle sorting for discrepancy_value by absolute value
                 if ($sortKey === 'discrepancy_value') {
                     $result = abs($aValue) <=> abs($bValue);
-                } 
+                }
                 // Handle comparison based on data type
                 else if (is_string($aValue) && is_string($bValue)) {
                     $result = strcasecmp($aValue, $bValue);
@@ -1178,31 +1050,8 @@ class PembelianController extends Controller
         // Get individual matched rows, not matched groups
         $matchedRows = $validation->validation_details['matched_rows'] ?? [];
 
-        // Convert to array format and add group information for display
-        $allItems = [];
-        foreach ($matchedRows as $row) {
-            $key = $row['key_value'];
-            
-            // Try to get the group information to display totals and notes
-            $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
-            $groupInfo = $matchedGroups[$key] ?? null;
-            
-            $allItems[] = [
-                'row_index' => $row['row_index'],
-                'key' => $key,
-                'uploaded_total' => $row['uploaded_total'],
-                'source_total' => $row['validation_source_total'],
-                'difference' => $row['uploaded_total'] - ($row['validation_source_total'] ?? 0),
-                'note' => $groupInfo['note'] ?? 'Sum Matched',
-                // Add additional row-specific data
-                'is_individual_row' => true,
-            ];
-        }
-
-        // Extract unique notes for filters
-        $uniqueNotes = array_values(array_unique(array_map(function ($item) {
-            return $item['note'];
-        }, $allItems)));
+        // Get matched groups once to avoid repeated lookups
+        $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
 
         // Get request parameters for filtering and pagination
         $searchTerm = $request->input('search', '');
@@ -1212,22 +1061,44 @@ class PembelianController extends Controller
         $page = $request->input('page', 1);
         $perPage = $request->input('per_page', 10);
 
-        // Apply search filter - search in the 'key' field (Kunci column)
-        $filteredItems = $allItems;
-        if ($searchTerm) {
-            $filteredItems = array_filter($filteredItems, function ($item) use ($searchTerm) {
-                return stripos($item['key'], $searchTerm) !== false;
-            });
+        // Build a set of unique notes efficiently while filtering
+        $uniqueNotesSet = [];
+        $filteredItems = [];
+
+        // Process rows with early filtering to avoid processing all items
+        foreach ($matchedRows as $row) {
+            $key = $row['key_value'];
+
+            // Apply search filter early
+            if ($searchTerm && stripos($key, $searchTerm) === false) {
+                continue;
+            }
+
+            $groupInfo = $matchedGroups[$key] ?? null;
+            $note = $groupInfo['note'] ?? 'Sum Matched';
+
+            // Track unique notes
+            $uniqueNotesSet[$note] = true;
+
+            // Apply note filter early
+            if ($noteFilter && $note !== $noteFilter) {
+                continue;
+            }
+
+            $filteredItems[] = [
+                'row_index' => $row['row_index'],
+                'key' => $key,
+                'uploaded_total' => $row['uploaded_total'],
+                'source_total' => $row['validation_source_total'],
+                'difference' => $row['uploaded_total'] - ($row['validation_source_total'] ?? 0),
+                'note' => $note,
+                'is_individual_row' => true,
+            ];
         }
 
-        // Apply note filter
-        if ($noteFilter) {
-            $filteredItems = array_filter($filteredItems, function ($item) use ($noteFilter) {
-                return $item['note'] === $noteFilter;
-            });
-        }
+        $uniqueNotes = array_keys($uniqueNotesSet);
 
-        // Apply sorting
+        // Apply sorting only on filtered items
         if ($sortKey && $sortDirection) {
             usort($filteredItems, function ($a, $b) use ($sortKey, $sortDirection) {
                 $aValue = $a[$sortKey] ?? null;
@@ -1236,7 +1107,7 @@ class PembelianController extends Controller
                 // Handle sorting for difference by absolute value
                 if ($sortKey === 'difference') {
                     $result = abs($aValue) <=> abs($bValue);
-                } 
+                }
                 // Handle comparison based on data type
                 else if (is_string($aValue) && is_string($bValue)) {
                     $result = strcasecmp($aValue, $bValue);
@@ -1377,6 +1248,7 @@ class PembelianController extends Controller
 
         $key = $request->input('key');
         $type = $request->input('type'); // 'uploaded' or 'validation'
+        $headerRow = $request->input('header_row', 1); // Get header row from frontend, default to 1
 
         if (!$key || !$type) {
             Log::error('Missing required parameters');
@@ -1405,7 +1277,7 @@ class PembelianController extends Controller
 
                 $connectorColumn = $config['connector'][0]; // e.g., 'NOMOR PENERIMAAN'
                 $sumField = $config['sum'][0] ?? null; // e.g., 'jumlah_retur'
-                $data = $this->readFileAndFilterByKey($path, $key, $connectorColumn);
+                $data = $this->readFileAndFilterByKey($path, $key, $connectorColumn, $headerRow);
                 Log::info('Uploaded Data Response', ['data' => $data]);
 
                 return response()->json([
@@ -1513,20 +1385,27 @@ class PembelianController extends Controller
     /**
      * Helper method to read file and filter by key
      */
-    private function readFileAndFilterByKey($path, $key, $connectorColumn)
+    private function readFileAndFilterByKey($path, $key, $connectorColumn, $headerRow = 1)
     {
         $fullPath = Storage::path($path);
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
         $allData = [];
         $headers = [];
 
+        // Convert 1-based header row to 0-based index
+        $headerOffset = $headerRow - 1;
+
         if (in_array($extension, ['xlsx', 'xls'])) {
             $spreadsheet = IOFactory::load($fullPath);
             $sheet = $spreadsheet->getActiveSheet();
-            $headerRow = $sheet->rangeToArray('A1:' . $sheet->getHighestColumn() . '1', null, true, true, true)[1];
-            $headers = array_map('trim', $headerRow);
 
-            foreach ($sheet->getRowIterator(2) as $row) {
+            // Use dynamic header row instead of hardcoded row 1
+            $headerRange = 'A' . $headerRow . ':' . $sheet->getHighestColumn() . $headerRow;
+            $headerRowData = $sheet->rangeToArray($headerRange, null, true, true, true)[$headerRow];
+            $headers = array_map('trim', $headerRowData);
+
+            // Read data rows starting after the header row
+            foreach ($sheet->getRowIterator($headerRow + 1) as $row) {
                 $rowData = [];
                 $cellIterator = $row->getCellIterator();
                 $cellIterator->setIterateOnlyExistingCells(false);
@@ -1551,9 +1430,50 @@ class PembelianController extends Controller
 
             $csv = Reader::createFromString($content);
             $csv->setDelimiter(',');
-            $csv->setHeaderOffset(0);
-            $headers = array_map('trim', $csv->getHeader());
-            $allData = iterator_to_array($csv->getRecords());
+
+            // Read all rows without using setHeaderOffset to avoid duplicate column name error
+            $allRows = iterator_to_array($csv->getRecords());
+
+            if (!isset($allRows[$headerOffset])) {
+                Log::error('Header row not found in CSV for document comparison', [
+                    'headerRow' => $headerRow,
+                    'totalRows' => count($allRows)
+                ]);
+                throw new \Exception("Baris header #{$headerRow} tidak ditemukan dalam file.");
+            }
+
+            // Get headers manually and handle duplicates by appending index
+            $rawHeaders = $allRows[$headerOffset];
+            $headers = [];
+            $headerCount = [];
+
+            foreach ($rawHeaders as $index => $header) {
+                $trimmedHeader = trim($header ?? '');
+                if ($trimmedHeader === '') {
+                    $trimmedHeader = "Column_" . $index;
+                }
+
+                // Handle duplicate headers by appending a counter
+                if (!isset($headerCount[$trimmedHeader])) {
+                    $headerCount[$trimmedHeader] = 0;
+                    $headers[] = $trimmedHeader;
+                } else {
+                    $headerCount[$trimmedHeader]++;
+                    $headers[] = $trimmedHeader . '_' . $headerCount[$trimmedHeader];
+                }
+            }
+
+            // Build associative array data manually
+            $dataRows = array_slice($allRows, $headerOffset + 1);
+            foreach ($dataRows as $row) {
+                $rowData = [];
+                foreach ($headers as $index => $headerName) {
+                    $rowData[$headerName] = $row[$index] ?? null;
+                }
+                if (count(array_filter($rowData))) {
+                    $allData[] = $rowData;
+                }
+            }
         }
 
         // Filter data by the connector key (case-insensitive and trimmed)
@@ -1577,31 +1497,4 @@ class PembelianController extends Controller
         ];
     }
 }
-
-
-
-
-/**
- * Show the form for editing the specified resource.
- */
-// public function edit(string $id)
-// {
-//     //
-// }
-
-/**
- * Update the specified resource in storage.
- */
-// public function update(Request $request, string $id)
-// {
-//     //
-// }
-
-/**
- * Remove the specified resource from storage.
- */
-// public function destroy(string $id)
-// {
-//     //
-// }
 
