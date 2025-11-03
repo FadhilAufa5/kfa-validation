@@ -125,19 +125,7 @@ class PembelianController extends Controller
         Log::info("File upload and conversion completed.", ['stored_path' => $path]);
 
         return response()->json(['filename' => "{$originalName}.csv"]);
-    } catch (\Exception $e) {
-        Log::error("Error during file upload/conversion", [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'error' => 'An error occurred during file upload or conversion.',
-            'message' => $e->getMessage(),
-        ], 500);
-    }
-}
-
+    } 
     public function validateFile(Request $request, $type)
     {
         $startTime = microtime(true);
@@ -556,17 +544,6 @@ class PembelianController extends Controller
     }
 
 
-    public function delete($filename)
-    {
-        $path = "uploads/{$filename}";
-        if (!Storage::exists($path)) {
-            return back()->with('error', 'File tidak ditemukan.');
-        }
-
-        Storage::delete($path);
-
-        return back()->with('success', "File {$filename} berhasil dihapus.");
-    }
 
     public function process($filename)
     {
