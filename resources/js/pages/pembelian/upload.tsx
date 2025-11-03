@@ -136,52 +136,62 @@ export default function UploadPage({
     };
 
     /** Step 1: Upload & Preview **/
-    async function handleUploadAndPreview() {
-        if (!data.document) {
-            setApiError('Silakan pilih file terlebih dahulu.');
-            return;
-        }
-
-        setIsLoading(true);
-        setApiError(null);
-        setStep('previewing');
-        setUploadProgress(0);
-
-        const formData = new FormData();
-        formData.append('document', data.document);
-
-        try {
-            const uploadResponse = await axios.post(saveUrl, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                onUploadProgress: (progressEvent) => {
-                    const percentCompleted = Math.round(
-                        (progressEvent.loaded * 100) /
-                            (progressEvent.total || 1),
-                    );
-                    setUploadProgress(percentCompleted);
-                },
-            });
-
-            const { filename } = uploadResponse.data;
-            if (!filename)
-                throw new Error('Server tidak mengembalikan nama file.');
-            setUploadedFilename(filename);
-
-            const previewUrl = route('pembelian.preview', { filename });
-            const previewResponse = await axios.get(previewUrl);
-            setPreviewData(previewResponse.data.preview);
-        } catch (error: any) {
-            console.error('❌ Upload or Preview failed', error);
-            const errorMessage =
-                error.response?.data?.error ||
-                error.message ||
-                'Terjadi kesalahan yang tidak diketahui.';
-            setApiError(errorMessage);
-            setStep('initial');
-        } finally {
-            setIsLoading(false);
-        }
+async function handleUploadAndPreview() {
+    if (!data.document) {
+        setApiError('Silakan pilih file terlebih dahulu.');
+        return;
     }
+
+    setIsLoading(true);
+    setApiError(null);
+    setStep('previewing');
+    setUploadProgress(0);
+
+    // 🔥 Pastikan FormData langsung dari File object
+    const formData = new FormData();
+    formData.append('document', data.document); // nama harus sama dengan backend
+
+    try {
+        console.log('🚀 Mulai upload file ke:', saveUrl);
+
+        const uploadResponse = await axios.post(saveUrl, formData, {
+            withCredentials: true, // penting untuk Laravel session
+            headers: {
+                Accept: 'application/json',
+            },
+            onUploadProgress: (progressEvent) => {
+                const percentCompleted = Math.round(
+                    (progressEvent.loaded * 100) / (progressEvent.total || 1),
+                );
+                setUploadProgress(percentCompleted);
+            },
+        });
+
+        console.log('✅ Upload Response:', uploadResponse.data);
+
+        const { filename } = uploadResponse.data || {};
+        if (!filename) throw new Error('Server tidak mengembalikan nama file.');
+
+        setUploadedFilename(filename);
+
+        const previewUrl = route('pembelian.preview', { filename });
+        const previewResponse = await axios.get(previewUrl, {
+            withCredentials: true,
+        });
+
+        setPreviewData(previewResponse.data.preview);
+    } catch (error: any) {
+        console.error('❌ Upload failed:', error);
+        const msg =
+            error.response?.data?.message ||
+            error.response?.data?.error ||
+            error.message;
+        setApiError(msg || 'Gagal mengunggah file.');
+        setStep('initial');
+    } finally {
+        setIsLoading(false);
+    }
+}
 
     /** Step 2: Process File **/
     async function handleProcessFile() {
@@ -224,7 +234,7 @@ export default function UploadPage({
             return;
         }
 
-        console.log('Validating File:', filenameToUse);
+        console.log('Validating File:', filenameToUse, 'with header row:', headerRow);
         setIsLoading(true);
         setApiError(null);
         setStep('validating');
@@ -232,6 +242,7 @@ export default function UploadPage({
         try {
             const response = await axios.post(validateUrl, {
                 filename: filenameToUse,
+                headerRow: headerRow, // Send the selected header row
             });
             setValidationResult(response.data);
             setStep('validation_complete');
@@ -297,18 +308,17 @@ export default function UploadPage({
                             <div className="space-y-6">
                                 <div className="grid w-full items-center gap-1.5">
                                     <Label htmlFor="document">Pilih File</Label>
-                                    <Input
-                                        id="document"
-                                        type="file"
-                                        accept=".xlsx,.xls,.csv"
-                                        onChange={(e) =>
-                                            setData(
-                                                'document',
-                                                e.target.files?.[0] ?? null,
-                                            )
-                                        }
-                                        disabled={isLoading}
-                                    />
+   <Input
+    id="document"
+    type="file"
+    accept=".xlsx,.xls,.csv"
+    onChange={(e) => {
+        const file = e.target.files?.[0] ?? null;
+        setData('document', file);
+        console.log('📂 File selected:', file?.name, file?.size);
+    }}
+    disabled={isLoading}
+/>
                                 </div>
                                 <div className="flex justify-end">
                                     <Button

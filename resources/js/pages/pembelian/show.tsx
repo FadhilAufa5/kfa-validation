@@ -564,9 +564,7 @@ export default function PembelianShow() {
                                         </svg>
                                         <div className="absolute flex flex-col items-center">
                                             <span className="text-xl font-bold">
-                                                {validationData.score.toFixed(
-                                                    1,
-                                                )}
+                                                {validationData.score}
                                                 %
                                             </span>
                                             <span className="text-xs text-muted-foreground">

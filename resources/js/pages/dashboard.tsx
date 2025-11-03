@@ -103,84 +103,102 @@ export default function Dashboard() {
             </p>
           </div>
 
-          {/* Notification Bell Dropdown */}
-         <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-            <Button className="relative h-10 w-10 rounded-full p-2 hover:bg-gray-800 transition">
-            <Bell className="h-5 w-5 dark:text-gray-200" />
-            {recentActivities.some(a => a.isNew) && (
-                <span
-                className="absolute -top-1 -right-1 inline-flex h-3 w-3 animate-pulse rounded-full bg-red-500"
-                title={`${recentActivities.filter(a => a.isNew).length} baru`}
-                />
-            )}
-            </Button>
-        </DropdownMenuTrigger>
+          {/* Notification Bell Dropdown - improved dark mode support & design */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label="Notifikasi"
+                className="relative h-11 w-11 rounded-xl p-2 
+                           bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-100
+                           ring-1 ring-gray-100 dark:ring-gray-700
+                           hover:shadow-md hover:scale-[1.02] transition-all"
+              >
+                <Bell className="h-5 w-5" />
+                {recentActivities.some(a => a.isNew) && (
+                  <span
+                    className="absolute -top-1 -right-1 inline-flex items-center justify-center
+                               min-w-[18px] h-4 px-1 rounded-full text-xs font-semibold
+                               bg-red-600 text-white ring-2 ring-white dark:ring-gray-900
+                               shadow-sm"
+                    title={`${recentActivities.filter(a => a.isNew).length} baru`}
+                  >
+                    {recentActivities.filter(a => a.isNew).length}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
 
-        <DropdownMenuContent
-            align="end"
-            className="w-80 max-w-full rounded-lg shadow-lg border bg-white dark:bg-gray-800 overflow-hidden"
-        >
-            <div className="px-4 py-2 border-b dark:border-gray-700 flex justify-between items-center">
-            <h3 className="font-semibold text-gray-700 dark:text-gray-200 text-sm">Notifikasi</h3>
-            {recentActivities.some(a => a.isNew) && (
-                <span className="text-xs text-red-500 dark:text-red-400 font-medium">
-                {recentActivities.filter(a => a.isNew).length} baru
-                </span>
-            )}
-            </div>
+            <DropdownMenuContent
+              align="end"
+              className="w-80 max-w-full rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700
+                         bg-white/95 dark:bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 overflow-hidden"
+            >
+              {/* Header */}
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Notifikasi</h3>
+                {recentActivities.some(a => a.isNew) ? (
+                  <Badge variant="secondary" className="text-xs">
+                    {recentActivities.filter(a => a.isNew).length} baru
+                  </Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Terbaru</span>
+                )}
+              </div>
 
-            <div className="max-h-64 overflow-y-auto">
-            {recentActivities.length === 0 && (
-                <p className="text-center text-gray-400 py-4 text-sm">Tidak ada notifikasi</p>
-            )}
-            {recentActivities.map(activity => (
-                <DropdownMenuItem
-                key={activity.id}
-                className="group flex items-start gap-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-                >
-                <div
-                    className={`flex-shrink-0 h-8 w-8 flex items-center justify-center rounded-full
-                    ${activity.isNew
-                        ? "bg-red-100 dark:bg-red-900 animate-pulse"
-                        : "bg-green-100 dark:bg-green-900"}
-                    `}
-                >
-                    <Clock
-                    className={`h-4 w-4 ${
-                        activity.isNew
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-green-600 dark:text-green-400"
-                    }`}
-                    />
-                </div>
-                <div className="flex-1 text-sm text-gray-700 dark:text-gray-200">
-                    <p className="flex items-center gap-2">
-                    <span className="font-medium">{activity.user}</span>
-                    {activity.action}
+              {/* Body */}
+              <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 bg-transparent">
+                {recentActivities.length === 0 && (
+                  <p className="text-center text-gray-500 dark:text-gray-400 py-4 text-sm">
+                    Tidak ada notifikasi
+                  </p>
+                )}
+                {recentActivities.map(activity => (
+                  <DropdownMenuItem
+                    key={activity.id}
+                    className="group flex items-start gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors rounded-none"
+                  >
+                    <div
+                      className={`flex-shrink-0 h-9 w-9 flex items-center justify-center rounded-lg
+                        ${activity.isNew
+                          ? "bg-red-50 dark:bg-red-900/40"
+                          : "bg-slate-50 dark:bg-slate-800/50"}
+                      `}
+                    >
+                      <Clock
+                        className={`h-4 w-4
+                          ${activity.isNew ? "text-red-600 dark:text-red-300" : "text-slate-600 dark:text-slate-300"}`}
+                      />
+                    </div>
+
+                    <div className="flex-1 text-sm">
+                      <p className="text-gray-900 dark:text-gray-100">
+                        <span className="font-medium">{activity.user}</span>{" "}
+                        <span className="text-gray-700 dark:text-gray-300">{activity.action}</span>
+                      </p>
+                      <span className="text-xs text-muted-foreground">{activity.time}</span>
+                    </div>
+
                     {activity.isNew && (
-                        <span
-                        className={`ml-1 px-2 py-0.5 rounded-full text-xs font-semibold
-                        ${activity.isImportant ? "bg-red-500 text-white" : "bg-green-500 text-white"}`}
-                        >
+                      <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-semibold
+                                       bg-red-600 text-white">
                         Baru
-                        </span>
+                      </span>
                     )}
-                    </p>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{activity.time}</span>
-                </div>
-                </DropdownMenuItem>
-            ))}
-            </div>
+                  </DropdownMenuItem>
+                ))}
+              </div>
 
-            <div className="px-4 py-2 border-t dark:border-gray-700">
-            <Button variant="outline" size="sm" className="w-full">
-                Lihat semua
-            </Button>
-            </div>
-        </DropdownMenuContent>
-        </DropdownMenu>
-
+              {/* Footer */}
+              <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-transparent">
+                <Button
+                  variant="ghost"
+                  className="w-full text-sm hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  Lihat semua notifikasi
+                </Button>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Cards Section */}

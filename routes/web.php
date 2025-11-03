@@ -97,13 +97,21 @@ Route::get('pembelian/history/data', [PembelianController::class, 'getValidation
 Route::get('pembelian/document/{filename}/uploaded', [PembelianController::class, 'getUploadedDocumentData'])->name('pembelian.document.uploaded');
 Route::get('pembelian/document/{filename}/validation', [PembelianController::class, 'getValidationDocumentData'])->name('pembelian.document.validation');
 
-// user management 
-Route::get('/users', [UsersController::class, 'index'])->name('users.index');
-Route::get('/users/{id}', [UsersController::class, 'show'])->name('users.show');
-Route::put('/users/{user}', [UsersController::class, 'update'])->name('users.update');
-Route::post('/users', [UsersController::class, 'store'])->name('users.store');
-Route::post('/users/check-email', [UsersController::class, 'checkEmail'])->name('users.check-email');
-Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
+// user management (super_admin only)
+Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
+    Route::get('/users', [UsersController::class, 'index'])->name('users.index');
+    Route::get('/users/{id}', [UsersController::class, 'show'])->name('users.show');
+    Route::put('/users/{user}', [UsersController::class, 'update'])->name('users.update');
+    Route::post('/users', [UsersController::class, 'store'])->name('users.store');
+    Route::post('/users/check-email', [UsersController::class, 'checkEmail'])->name('users.check-email');
+    Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
+});
+
+// activity logs (super_admin only)
+Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
+    Route::get('/activity-logs', [App\Http\Controllers\ActivityLogController::class, 'index'])->name('activity-logs.index');
+    Route::get('/activity-logs/{activityLog}', [App\Http\Controllers\ActivityLogController::class, 'show'])->name('activity-logs.show');
+});
 
 
 

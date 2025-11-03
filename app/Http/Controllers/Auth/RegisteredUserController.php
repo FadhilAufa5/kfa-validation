@@ -4,16 +4,22 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\OtpService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rules;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class RegisteredUserController extends Controller
 {
+    public function __construct(protected OtpService $otpService)
+    {
+    }
+
     /**
      * Show the registration page.
      */
@@ -35,18 +41,24 @@ class RegisteredUserController extends Controller
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => $request->password,
+        $sent = $this->otpService->sendOtp($request->email, 'registration');
+        
+        if (!$sent) {
+            throw ValidationException::withMessages([
+                'email' => ['Failed to send verification code. Please try again.'],
+            ]);
+        }
+
+        $request->session()->put([
+            'pending_registration' => [
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => $request->password,
+            ],
+            'otp_email' => $request->email,
+            'otp_type' => 'registration',
         ]);
 
-        event(new Registered($user));
-
-        Auth::login($user);
-
-        $request->session()->regenerate();
-
-        return redirect()->intended(route('dashboard', absolute: false));
+        return to_route('otp.show');
     }
 }

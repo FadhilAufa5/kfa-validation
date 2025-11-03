@@ -1,11 +1,11 @@
-import { Link } from '@inertiajs/react';
-import { HandCoins, History, LayoutGrid, Store, Users } from 'lucide-react';
+import { Link, usePage } from '@inertiajs/react';
+import { HandCoins, History, LayoutGrid, Store, Users, Activity,LayoutDashboard  } from 'lucide-react';
 
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 import AppLogo from './app-logo';
 
-// import { NavFooter } from '@/components/nav-footer';
+
 import { NavMain } from '@/components/nav-main';
 import { NavPembelian } from '@/components/nav-pembelian';
 import { NavPenjualan } from '@/components/nav-penjualan';
@@ -22,16 +22,14 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 
-// 🌟 MENU UTAMA
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: dashboard(),
-        icon: LayoutGrid,
+        icon: LayoutDashboard ,
     },
 ];
 
-// 🌟 MENU PEMBELIAN
 const pembelianNavItems: NavItem[] = [
     {
         title: 'Pembelian',
@@ -45,7 +43,7 @@ const pembelianNavItems: NavItem[] = [
     },
 ];
 
-// 🌟 MENU PENJUALAN + USER MANAGEMENT
+
 const penjualanNavItems: NavItem[] = [
     {
         title: 'Penjualan',
@@ -65,6 +63,11 @@ const uyNavItems: NavItem[] = [
         href: '/users',
         icon: Users,
     },
+    {
+        title: 'Log Aktivitas',
+        href: '/activity-logs',
+        icon: Activity,
+    },
 ];
 
 // const footerNavItems: NavItem[] = [
@@ -76,6 +79,9 @@ const uyNavItems: NavItem[] = [
 // ];
 
 export function AppSidebar() {
+    const { auth } = usePage().props as { auth: { user: { role: string } } };
+    const isSuperAdmin = auth?.user?.role === 'super_admin';
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             {/* Header Logo */}
@@ -96,7 +102,8 @@ export function AppSidebar() {
                 <NavMain items={mainNavItems} />
                 <NavPembelian items={pembelianNavItems} />
                 <NavPenjualan items={penjualanNavItems} />
-                <NavUy items={uyNavItems} />
+                {/* Only show User Management & Activity Logs for super_admin */}
+                {isSuperAdmin && <NavUy items={uyNavItems} />}
             </SidebarContent>
 
             {/* Footer */}

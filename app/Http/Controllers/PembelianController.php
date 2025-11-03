@@ -8,6 +8,7 @@ use Illuminate\Validation\ValidationData;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Validator;
 
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
@@ -20,6 +21,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Csv;
 use League\Csv\Reader;
 use DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\ActivityLogger;
 
 
 class PembelianController extends Controller
@@ -79,37 +81,62 @@ class PembelianController extends Controller
         $extension = strtolower($file->getClientOriginalExtension());
         $doc_type = $type;
 
-        // Define the base directory for uploads
-        $uploadDir = storage_path("app/private/uploads");
-        if (!file_exists($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
+        Log::info('File details', [
+            'original_name' => $originalName,
+            'extension' => $extension,
+            'mime' => $file->getMimeType(),
+            'size_kb' => round($file->getSize() / 1024, 2),
+            'size_bytes' => $file->getSize(),
+        ]);
+
+        // Define the base directory for uploads using Storage facade
+        $uploadDir = "uploads";
+        $csvPath = storage_path("app/{$uploadDir}/{$originalName}.csv");
+        
+        // Ensure directory exists
+        if (!Storage::exists($uploadDir)) {
+            Storage::makeDirectory($uploadDir);
+            Log::info("Upload directory created at {$uploadDir}");
         }
 
-        $csvPath = "{$uploadDir}/{$originalName}.csv";
-
         if (in_array($extension, ['xls', 'xlsx'])) {
-            // Load spreadsheet with data type preservation
+            Log::info("Converting Excel to CSV...", ['path' => $file->getRealPath()]);
+
             $reader = IOFactory::createReaderForFile($file->getRealPath());
             $reader->setReadDataOnly(false);
             $spreadsheet = $reader->load($file->getRealPath());
 
-            // Write to CSV preserving numeric and string values
             $writer = new Csv($spreadsheet);
             $writer->setDelimiter(',');
             $writer->setEnclosure('"');
             $writer->setLineEnding("\r\n");
             $writer->setSheetIndex(0);
-            $writer->setUseBOM(true); // Helps for UTF-8 safety
+            $writer->setUseBOM(true);
             $writer->save($csvPath);
 
-            $path = "uploads/{$originalName}.csv";
+            Log::info("Excel successfully converted to CSV.", ['csv_path' => $csvPath]);
         } else {
-            // Move CSV as-is
-            $path = $file->storeAs("uploads/", "{$originalName}.csv");
+            Log::info("File is already CSV, moving as-is.");
+            $file->storeAs($uploadDir, "{$originalName}.csv");
         }
+        
+        $path = "uploads/{$originalName}.csv";
+
+        Log::info("File upload and conversion completed.", ['stored_path' => $path]);
 
         return response()->json(['filename' => "{$originalName}.csv"]);
+    } catch (\Exception $e) {
+        Log::error("Error during file upload/conversion", [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'error' => 'An error occurred during file upload or conversion.',
+            'message' => $e->getMessage(),
+        ], 500);
     }
+}
 
     public function validateFile(Request $request, $type)
     {
@@ -119,6 +146,20 @@ class PembelianController extends Controller
         $request->validate([
             'filename' => 'required|string',
         ]);
+
+        // Log activity - Validation started
+        ActivityLogger::log(
+            action: 'Validasi File Dimulai',
+            description: "Memulai validasi file {$request->input('filename')} untuk dokumen Pembelian {$type}",
+            entityType: 'Validation',
+            entityId: null,
+            metadata: [
+                'filename' => $request->input('filename'),
+                'document_type' => 'Pembelian',
+                'document_category' => ucfirst(strtolower($type)),
+                'header_row' => $request->input('headerRow', 1),
+            ]
+        );
 
         $filename = $request->input('filename');
         $path = "uploads/{$filename}";
@@ -483,6 +524,28 @@ class PembelianController extends Controller
                 'matched_rows' => $matchedRows,
             ],
         ]);
+
+        // Log activity - Validation completed
+        $validationStatus = count($allInvalidGroups) > 0 ? 'invalid' : 'valid';
+        ActivityLogger::log(
+            action: 'Validasi File Selesai',
+            description: "Validasi file {$filename} selesai dengan status {$validationStatus} (Score: {$score}%)",
+            entityType: 'Validation',
+            entityId: (string) $validationRecord->id,
+            metadata: [
+                'validation_id' => $validationRecord->id,
+                'filename' => $filename,
+                'document_type' => 'Pembelian',
+                'document_category' => ucfirst(strtolower($type)),
+                'status' => $validationStatus,
+                'score' => $score,
+                'total_records' => $totalRecords,
+                'matched_records' => $matchedRecords,
+                'mismatched_records' => $mismatchedRecords,
+                'invalid_groups_count' => count($allInvalidGroups),
+                'execution_time' => round($executionTime, 2),
+            ]
+        );
 
         return response()->json([
             'status' => count($allInvalidGroups) > 0 ? 'invalid' : 'valid',

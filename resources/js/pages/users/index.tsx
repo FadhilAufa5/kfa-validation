@@ -1,9 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { Head, router } from "@inertiajs/react";
 import { route } from "ziggy-js";
 import { Button } from "@/components/ui/button";
-import { Search, Plus, User, X } from "lucide-react";
+import { Search, Plus, User, X, Filter } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Toaster, toast } from "sonner";
@@ -11,6 +11,7 @@ import AddUserDialog from "@/components/AddUserDialog";
 import EditUserDialog from "@/components/EditUserDialog";
 import UserTable from "@/components/UserTable";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { BreadcrumbItem } from "@/types";
 
 interface UserType {
@@ -22,15 +23,47 @@ interface UserType {
   created_at: string;
 }
 
-export default function UsersIndex({ users }: { users: UserType[] }) {
-  const [search, setSearch] = useState("");
+interface PaginatedUsers {
+  data: UserType[];
+  current_page: number;
+  last_page: number;
+  per_page: number;
+  total: number;
+}
+
+interface Statistics {
+  total: number;
+  online: number;
+  offline: number;
+}
+
+export default function UsersIndex({ 
+  users, 
+  availableRoles, 
+  filters,
+  statistics
+}: { 
+  users: PaginatedUsers; 
+  availableRoles: string[];
+  filters: { search?: string; role?: string };
+  statistics: Statistics;
+}) {
+  const [search, setSearch] = useState(filters.search || "");
+  const [selectedRole, setSelectedRole] = useState<string>(filters.role || "all");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<UserType | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 7;
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleFilterChange();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const breadcrumbs: BreadcrumbItem[] = [{ title: "User Management", href: "/users" }];
 
@@ -48,27 +81,59 @@ export default function UsersIndex({ users }: { users: UserType[] }) {
         toast.success("User berhasil dihapus!");
         setIsDeleteModalOpen(false);
         setUserToDelete(null);
-        fetchUsers();
       },
       onError: () => toast.error("Gagal menghapus user."),
     });
   };
 
-  // Filter dan urutkan: online dulu, offline bawah
-  const processedUsers = useMemo(() => {
-    return users
-      .filter((u) =>
-        [u.name, u.email, u.role].some((f) => f.toLowerCase().includes(search.toLowerCase()))
-      )
-      .sort((a, b) => Number(b.is_online) - Number(a.is_online));
-  }, [users, search]);
+  // Handle filter change (both search and role)
+  const handleFilterChange = () => {
+    const params: { search?: string; role?: string; page?: number } = {};
+    
+    if (search) params.search = search;
+    if (selectedRole && selectedRole !== "all") params.role = selectedRole;
+    
+    router.get(route("users.index"), params, {
+      preserveScroll: true,
+      preserveState: true,
+    });
+  };
 
-  const paginatedUsers = processedUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalPages = Math.ceil(processedUsers.length / itemsPerPage);
+  // Handle role filter change
+  const handleRoleChange = (value: string) => {
+    setSelectedRole(value);
+    
+    const params: { search?: string; role?: string } = {};
+    if (search) params.search = search;
+    if (value && value !== "all") params.role = value;
+    
+    router.get(route("users.index"), params, {
+      preserveScroll: true,
+      preserveState: true,
+    });
+  };
 
-  const totalUsers = users.length;
-  const onlineUsers = users.filter((u) => u.is_online).length;
-  const offlineUsers = totalUsers - onlineUsers;
+  // Handle pagination
+  const handlePageChange = (page: number) => {
+    const params: { search?: string; role?: string; page: number } = { page };
+    
+    if (search) params.search = search;
+    if (selectedRole && selectedRole !== "all") params.role = selectedRole;
+    
+    router.get(route("users.index"), params, {
+      preserveScroll: true,
+      preserveState: true,
+    });
+  };
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setSearch("");
+    setSelectedRole("all");
+    router.get(route("users.index"), {}, {
+      preserveScroll: true,
+    });
+  };
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -101,79 +166,148 @@ export default function UsersIndex({ users }: { users: UserType[] }) {
           <Card className="border">
             <CardContent className="py-6 text-center">
               <h3 className="text-sm text-muted-foreground">Total Users</h3>
-              <p className="text-2xl font-bold text-blue-600">{totalUsers}</p>
+              <p className="text-2xl font-bold text-blue-600">{statistics.total}</p>
             </CardContent>
           </Card>
 
           <Card className="border">
             <CardContent className="py-6 text-center">
               <h3 className="text-sm text-muted-foreground">Online</h3>
-              <p className="text-2xl font-bold text-green-600">{onlineUsers}</p>
+              <p className="text-2xl font-bold text-green-600">{statistics.online}</p>
             </CardContent>
           </Card>
 
           <Card className="border">
             <CardContent className="py-6 text-center">
               <h3 className="text-sm text-muted-foreground">Offline</h3>
-              <p className="text-2xl font-bold text-gray-600">{offlineUsers}</p>
+              <p className="text-2xl font-bold text-gray-600">{statistics.offline}</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Table area with search moved inside */}
+        {/* Table area with search and filter */}
         <div className="bg-card border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-sm">
           <div className="p-4 border-b dark:border-gray-800">
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-medium">Daftar Pengguna</h2>
-                <p className="text-sm text-muted-foreground">{processedUsers.length} hasil</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-sm text-muted-foreground">{users.total} hasil</p>
+                  {(search || (selectedRole && selectedRole !== "all")) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleClearFilters}
+                      className="text-xs"
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                      Clear Filters
+                    </Button>
+                  )}
+                </div>
               </div>
               
-              {/* Search box moved here */}
-              <div className="relative w-full max-w-md">
-                <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Cari nama, email, atau role..."
-                  className="pl-10 pr-10"
-                />
-                {search && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="absolute right-1 top-1.5 h-8 w-8 rounded-md"
-                    onClick={() => setSearch("")}
-                    aria-label="Clear search"
-                  >
-                    <X className="w-4 h-4 text-gray-500" />
-                  </Button>
-                )}
+              {/* Search box and Role filter */}
+              <div className="flex flex-col md:flex-row gap-3">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Cari nama atau email..."
+                    className="pl-10 pr-10"
+                  />
+                  {search && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="absolute right-1 top-1.5 h-8 w-8 rounded-md"
+                      onClick={() => setSearch("")}
+                      aria-label="Clear search"
+                    >
+                      <X className="w-4 h-4 text-gray-500" />
+                    </Button>
+                  )}
+                </div>
+
+                {/* Role Filter */}
+                <div className="flex items-center gap-2 min-w-[200px]">
+                  <Filter className="w-4 h-4 text-gray-400" />
+                  <Select value={selectedRole || "all"} onValueChange={handleRoleChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Filter Role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Role</SelectItem>
+                      {availableRoles.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {role}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="p-4">
             <UserTable 
-              users={paginatedUsers} 
+              users={users.data} 
               onEdit={(u) => { setSelectedUser(u); setIsEditModalOpen(true); }} 
               onDelete={handleDeleteClick} 
             />
           </div>
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="p-4 border-t dark:border-gray-800 flex items-center justify-center gap-2">
-              {Array.from({ length: totalPages }).map((_, i) => (
+          {users.last_page > 1 && (
+            <div className="p-4 border-t dark:border-gray-800 flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Halaman {users.current_page} dari {users.last_page}
+              </div>
+              <div className="flex items-center gap-2">
                 <Button
-                  key={i}
-                  variant={currentPage === i + 1 ? "default" : "ghost"}
+                  variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage(i + 1)}
+                  onClick={() => handlePageChange(users.current_page - 1)}
+                  disabled={users.current_page === 1}
                 >
-                  {i + 1}
+                  Previous
                 </Button>
-              ))}
+                
+                {Array.from({ length: users.last_page }).map((_, i) => {
+                  const page = i + 1;
+                  // Show first, last, current, and adjacent pages
+                  if (
+                    page === 1 ||
+                    page === users.last_page ||
+                    (page >= users.current_page - 1 && page <= users.current_page + 1)
+                  ) {
+                    return (
+                      <Button
+                        key={i}
+                        variant={users.current_page === page ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => handlePageChange(page)}
+                      >
+                        {page}
+                      </Button>
+                    );
+                  } else if (page === users.current_page - 2 || page === users.current_page + 2) {
+                    return <span key={i} className="px-2">...</span>;
+                  }
+                  return null;
+                })}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(users.current_page + 1)}
+                  disabled={users.current_page === users.last_page}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </div>
