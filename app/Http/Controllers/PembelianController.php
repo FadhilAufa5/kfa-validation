@@ -217,6 +217,7 @@ class PembelianController extends Controller
             'status' => $request->input('status', 'All'),
             'page' => $request->input('page', 1),
             'per_page' => $request->input('per_page', 10),
+            'document_type' => 'pembelian',
         ];
 
         $data = $this->validationDataService->getValidationHistory($filters);

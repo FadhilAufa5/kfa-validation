@@ -394,6 +394,10 @@ class ValidationDataService
     {
         $query = Validation::query();
 
+        if (!empty($filters['document_type'])) {
+            $query->where('document_type', $filters['document_type']);
+        }
+
         if (!empty($filters['search'])) {
             $query->where(function ($q) use ($filters) {
                 $q->where('file_name', 'LIKE', "%{$filters['search']}%")

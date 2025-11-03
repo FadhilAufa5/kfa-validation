@@ -1,6 +1,6 @@
 "use client";
 
-import { Link, Head } from "@inertiajs/react";
+import { Link, Head, router } from "@inertiajs/react";
 import { useState, useEffect } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Folder, Plus, Eye, Search } from "lucide-react";
+import { Folder, Plus, Eye, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { type BreadcrumbItem } from "@/types";
+import axios from "axios";
+
+interface ValidationLog {
+    id: number;
+    user: string;
+    fileName: string;
+    documentCategory: string;
+    uploadTime: string;
+    score: string;
+    status: 'Valid' | 'Invalid';
+}
 
 
 export const CircularScore = ({ score }: { score: string }) => {
@@ -80,40 +91,49 @@ export const CircularScore = ({ score }: { score: string }) => {
 };
 
 export default function ValidationLogPage() {
-  const logs = [
-    {
-      user: "Busdev",
-      fileType: "CSV",
-      fileName: "data_penjualan.csv",
-      role: "Admin",
-      uploadTime: "2025-10-14 10:25",
-      score: "100%",
-      status: "Valid",
-    },
-    {
-      user: "SC",
-      fileType: "XLSX",
-      fileName: "data_penjualan_08_25.xlsx",
-      role: "Admin",
-      uploadTime: "2025-10-15 09:42",
-      score: "90%",
-      status: "Invalid",
-    },
-  ];
-
+  const [logs, setLogs] = useState<ValidationLog[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"All" | "Valid" | "Invalid">("All");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+    from: 0,
+    to: 0,
+  });
 
-  const filteredLogs = logs.filter(
-    (item) =>
-      (filterStatus === "All" || item.status === filterStatus) &&
-      (item.user.toLowerCase().includes(search.toLowerCase()) ||
-        item.fileName.toLowerCase().includes(search.toLowerCase()) ||
-        item.role.toLowerCase().includes(search.toLowerCase()))
-  );
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterStatus]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [search, filterStatus, currentPage]);
+
+  const fetchLogs = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/penjualan/history/data', {
+        params: {
+          search,
+          status: filterStatus,
+          page: currentPage,
+        },
+      });
+      setLogs(response.data.data);
+      setPagination(response.data.pagination);
+    } catch (error) {
+      console.error('Error fetching validation logs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const countByStatus = {
-    All: logs.length,
+    All: pagination.total,
     Valid: logs.filter((i) => i.status === "Valid").length,
     Invalid: logs.filter((i) => i.status === "Invalid").length,
   };
@@ -131,7 +151,7 @@ export default function ValidationLogPage() {
 
   const breadcrumbs: BreadcrumbItem[] = [
     { title: "Penjualan", href: "/penjualan" },
-    { title: "History Penjualan", href: "/penjualan" },
+    { title: "History Penjualan", href: "/history/penjualan" },
   ];
 
   return (
@@ -223,9 +243,8 @@ export default function ValidationLogPage() {
                 <TableRow className="bg-gray-200/60 dark:bg-gray-900/60">
                   {[
                     "User",
-                    "File Type",
                     "File Name",
-                    "Role",
+                    "Document Category",
                     "Upload Time",
                     "Validation Score",
                     "Validation Status",
@@ -242,16 +261,24 @@ export default function ValidationLogPage() {
               </TableHeader>
 
               <TableBody>
-                {filteredLogs.length > 0 ? (
-                  filteredLogs.map((item, i) => (
+                {loading ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="text-center text-gray-500 dark:text-gray-400 py-8 text-sm"
+                    >
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : logs.length > 0 ? (
+                  logs.map((item) => (
                     <TableRow
-                      key={i}
+                      key={item.id}
                       className="even:bg-gray-50 odd:bg-white dark:even:bg-gray-900/30 dark:odd:bg-transparent transition-colors"
                     >
                       <TableCell>{item.user}</TableCell>
-                      <TableCell>{item.fileType}</TableCell>
                       <TableCell>{item.fileName}</TableCell>
-                      <TableCell>{item.role}</TableCell>
+                      <TableCell>{item.documentCategory}</TableCell>
                       <TableCell>{item.uploadTime}</TableCell>
                       <TableCell>
                         <CircularScore score={item.score} />
@@ -269,7 +296,8 @@ export default function ValidationLogPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                          className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center"
+                          onClick={() => router.visit(`/penjualan/${item.id}`)}
                         >
                           <Eye className="w-4 h-4 mr-1" /> Detail
                         </Button>
@@ -279,7 +307,7 @@ export default function ValidationLogPage() {
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={7}
                       className="text-center text-gray-500 dark:text-gray-400 py-8 text-sm"
                     >
                       Tidak ada hasil untuk pencarian ini.
@@ -290,6 +318,94 @@ export default function ValidationLogPage() {
             </Table>
           </div>
         </CardContent>
+
+        {/* Pagination */}
+        {!loading && logs.length > 0 && (
+          <div className="flex flex-col sm:flex-row justify-between items-center p-4 gap-4">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              Menampilkan {pagination.from} hingga {pagination.to} dari {pagination.total} entri
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(1)}
+                disabled={pagination.current_page === 1}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={pagination.current_page === 1}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              <div className="flex items-center gap-1">
+                {Array.from(
+                  { length: Math.min(5, pagination.last_page) },
+                  (_, i) => {
+                    let pageNum;
+                    const totalPages = pagination.last_page;
+                    const currentPage = pagination.current_page;
+
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`h-8 w-8 p-0 text-xs ${
+                          currentPage === pageNum
+                            ? "bg-blue-600 text-white hover:bg-blue-700"
+                            : "border-gray-300 text-gray-700 dark:border-gray-700 dark:text-gray-200"
+                        }`}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  }
+                )}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((prev) => Math.min(pagination.last_page, prev + 1))}
+                disabled={pagination.current_page === pagination.last_page}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(pagination.last_page)}
+                disabled={pagination.current_page === pagination.last_page}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </AppLayout>
   );
