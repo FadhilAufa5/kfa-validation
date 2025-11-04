@@ -144,7 +144,7 @@ export default function ValidationLogPage() {
         if (hasProcessingJobs) {
             const interval = setInterval(() => {
                 fetchLogs();
-            }, 15000); // Refresh every 15 seconds
+            }, 5000); // Refresh every 5 seconds
             
             return () => clearInterval(interval);
         }

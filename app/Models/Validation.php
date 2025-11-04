@@ -20,11 +20,14 @@ class Validation extends Model
         'total_records',
         'matched_records',
         'mismatched_records',
+        'status',
+        'processing_details',
         'validation_details', // Keep for backward compatibility during migration
     ];
 
     protected $casts = [
         'validation_details' => 'array', // Keep for backward compatibility
+        'processing_details' => 'array',
     ];
 
     public function invalidGroups(): HasMany
@@ -45,5 +48,22 @@ class Validation extends Model
     public function matchedRows(): HasMany
     {
         return $this->hasMany(ValidationMatchedRow::class);
+    }
+
+    /**
+     * Update validation status
+     */
+    public function updateStatus(string $status, ?array $processingDetails = null): bool
+    {
+        $data = ['status' => $status];
+        
+        if ($processingDetails !== null) {
+            $data['processing_details'] = array_merge(
+                $this->processing_details ?? [],
+                $processingDetails
+            );
+        }
+        
+        return $this->update($data);
     }
 }

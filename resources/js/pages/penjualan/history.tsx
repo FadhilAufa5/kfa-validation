@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Folder, Plus, Eye, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Folder, Plus, Eye, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2 } from "lucide-react";
 import { type BreadcrumbItem } from "@/types";
 import axios from "axios";
 
@@ -25,7 +25,9 @@ interface ValidationLog {
     documentCategory: string;
     uploadTime: string;
     score: string;
-    status: 'Valid' | 'Invalid';
+    status: 'Valid' | 'Invalid' | 'Processing' | 'Failed';
+    processing_status?: string;
+    processing_details?: any;
 }
 
 
@@ -94,7 +96,7 @@ export default function ValidationLogPage() {
   const [logs, setLogs] = useState<ValidationLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"All" | "Valid" | "Invalid">("All");
+  const [filterStatus, setFilterStatus] = useState<"All" | "Valid" | "Invalid" | "Processing" | "Failed">("All");
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
     current_page: 1,
@@ -104,6 +106,14 @@ export default function ValidationLogPage() {
     from: 0,
     to: 0,
   });
+  const [previousProcessingIds, setPreviousProcessingIds] = useState<number[]>([]);
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -112,6 +122,62 @@ export default function ValidationLogPage() {
   useEffect(() => {
     fetchLogs();
   }, [search, filterStatus, currentPage]);
+
+  // Auto-refresh for processing jobs
+  useEffect(() => {
+    const hasProcessingJobs = logs.some(log => log.status === 'Processing');
+    
+    if (hasProcessingJobs) {
+      const interval = setInterval(() => {
+        fetchLogs();
+      }, 5000); // Refresh every 5 seconds
+      
+      return () => clearInterval(interval);
+    }
+  }, [logs]);
+
+  // Track completed jobs and show notifications
+  useEffect(() => {
+    const currentProcessingIds = logs
+      .filter(log => log.status === 'Processing')
+      .map(log => log.id);
+    
+    // Find jobs that were processing but are now completed
+    const completedIds = previousProcessingIds.filter(
+      id => !currentProcessingIds.includes(id)
+    );
+    
+    if (completedIds.length > 0 && previousProcessingIds.length > 0) {
+      completedIds.forEach(id => {
+        const completedLog = logs.find(log => log.id === id);
+        if (completedLog) {
+          showNotification(completedLog);
+        }
+      });
+    }
+    
+    setPreviousProcessingIds(currentProcessingIds);
+  }, [logs]);
+
+  const showNotification = (log: ValidationLog) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const title = 'Validation Complete';
+      const body = `${log.fileName} - ${log.status} (Score: ${log.score})`;
+      
+      const notification = new Notification(title, {
+        body: body,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+        tag: `validation-${log.id}`,
+      });
+      
+      notification.onclick = () => {
+        window.focus();
+        router.visit(`/penjualan/${log.id}`);
+        notification.close();
+      };
+    }
+  };
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -136,6 +202,8 @@ export default function ValidationLogPage() {
     All: pagination.total,
     Valid: logs.filter((i) => i.status === "Valid").length,
     Invalid: logs.filter((i) => i.status === "Invalid").length,
+    Processing: logs.filter((i) => i.status === "Processing").length,
+    Failed: logs.filter((i) => i.status === "Failed").length,
   };
 
   const getStatusColor = (status: string) => {
@@ -144,6 +212,10 @@ export default function ValidationLogPage() {
         return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
       case "Invalid":
         return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+      case "Processing":
+        return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+      case "Failed":
+        return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400";
       default:
         return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
     }
@@ -194,7 +266,7 @@ export default function ValidationLogPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {(["All", "Valid", "Invalid"] as const).map((status) => {
+            {(["All", "Valid", "Invalid", "Processing", "Failed"] as const).map((status) => {
               const isActive = filterStatus === status;
               const colorClass = (() => {
                 if (status === "All")
@@ -209,6 +281,14 @@ export default function ValidationLogPage() {
                   return isActive
                     ? "bg-red-600 hover:bg-red-700 text-white"
                     : "border-red-300 text-red-700 dark:text-red-400 dark:border-red-700";
+                if (status === "Processing")
+                  return isActive
+                    ? "bg-blue-500 hover:bg-blue-600 text-white"
+                    : "border-blue-300 text-blue-700 dark:text-blue-400 dark:border-blue-700";
+                if (status === "Failed")
+                  return isActive
+                    ? "bg-orange-600 hover:bg-orange-700 text-white"
+                    : "border-orange-300 text-orange-700 dark:text-orange-400 dark:border-orange-700";
                 return "";
               })();
 
@@ -285,10 +365,13 @@ export default function ValidationLogPage() {
                       </TableCell>
                       <TableCell>
                         <span
-                          className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(
                             item.status
                           )}`}
                         >
+                          {item.status === 'Processing' && (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          )}
                           {item.status}
                         </span>
                       </TableCell>
@@ -298,8 +381,9 @@ export default function ValidationLogPage() {
                           size="sm"
                           className="text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center"
                           onClick={() => router.visit(`/penjualan/${item.id}`)}
+                          disabled={item.status === 'Processing'}
                         >
-                          <Eye className="w-4 h-4 mr-1" /> Detail
+                          <Eye className="w-4 h-4 mr-1" /> {item.status === 'Processing' ? 'Processing...' : 'Detail'}
                         </Button>
                       </TableCell>
                     </TableRow>

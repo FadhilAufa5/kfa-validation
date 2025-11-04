@@ -420,6 +420,16 @@ class ValidationDataService
         $validations = $query->paginate($filters['per_page'] ?? 10, ['*'], 'page', $filters['page'] ?? 1);
 
         $data = $validations->getCollection()->map(function ($validation) {
+            // Determine display status based on validation status field
+            $displayStatus = 'Valid';
+            if ($validation->status === 'processing') {
+                $displayStatus = 'Processing';
+            } elseif ($validation->status === 'failed') {
+                $displayStatus = 'Failed';
+            } elseif ($validation->mismatched_records > 0) {
+                $displayStatus = 'Invalid';
+            }
+
             return [
                 'id' => $validation->id,
                 'user' => $validation->role,
@@ -427,7 +437,9 @@ class ValidationDataService
                 'documentCategory' => $validation->document_category,
                 'uploadTime' => $validation->created_at->format('Y-m-d H:i'),
                 'score' => number_format($validation->score, 2) . '%',
-                'status' => $validation->mismatched_records === 0 ? 'Valid' : 'Invalid',
+                'status' => $displayStatus,
+                'processing_status' => $validation->status, // 'processing', 'completed', 'failed'
+                'processing_details' => $validation->processing_details,
             ];
         });
 

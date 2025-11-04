@@ -74,6 +74,7 @@ Route::get('/pembelian/urgent', [PembelianController::class, 'urgent'])->name('p
 // File Operations (Upload, Validation, Preview)
 Route::post('/pembelian/save/{type}', [PembelianController::class, 'save'])->name('pembelian.save');
 Route::post('/pembelian/validate-{type}', [PembelianController::class, 'validateFile'])->name('pembelian.validateFile');
+Route::get('/pembelian/validation/{id}/status', [PembelianController::class, 'getValidationStatus'])->name('pembelian.validation.status');
 Route::get('/pembelian/preview/{filename}', [PembelianController::class, 'preview'])->name('pembelian.preview');
 Route::post('/pembelian/process/{filename}', [PembelianController::class, 'processWithHeader'])->name('pembelian.processWithHeader');
 

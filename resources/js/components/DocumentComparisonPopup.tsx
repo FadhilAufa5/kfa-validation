@@ -33,6 +33,12 @@ const formatIDR = (value: number | string | null | undefined): string => {
 
 // Helper function to render document data, robustly handling different formats.
 const renderDocumentData = (data: unknown[] | null) => {
+    console.log('renderDocumentData received:', { 
+        dataLength: data?.length, 
+        firstElement: data?.[0],
+        firstElementType: Array.isArray(data?.[0]) ? 'array' : typeof data?.[0]
+    });
+
     if (!data || data.length === 0) {
         return (
             <div className="py-4 text-center text-sm text-muted-foreground">
@@ -44,26 +50,54 @@ const renderDocumentData = (data: unknown[] | null) => {
     let headers: string[] = [];
     let dataRows: unknown[] = [];
     
-    // Handle backend specific format: first element is headers, rest are data rows
-    if (data.length > 0 && Array.isArray(data[0])) {
-        headers = data[0].map(String);
-        dataRows = data.slice(1);
-    } 
-    // Handle array of objects (each object has keys as headers)
-    else if (
-        data.length > 0 &&
-        typeof data[0] === 'object' &&
-        data[0] !== null &&
-        !Array.isArray(data[0])
-    ) {
-        headers = Object.keys(data[0]);
-        dataRows = data;
-    } 
-    // Fallback for other formats
-    else {
+    // Backend sends data in format: [headers, ...dataRows]
+    // headers is array of strings: ['Col1', 'Col2', 'Col3']
+    // dataRows are objects: {Col1: 'val1', Col2: 'val2', Col3: 'val3'}
+    
+    if (data.length > 0) {
+        const firstElement = data[0];
+        
+        // Check if first element is a plain array (headers) vs an object (data row)
+        if (Array.isArray(firstElement)) {
+            // It's an array - check if it contains only primitives (headers)
+            const isHeaderArray = firstElement.every(
+                (item) => typeof item === 'string' || typeof item === 'number' || item === null || item === undefined
+            );
+            
+            if (isHeaderArray) {
+                // First element is headers, rest are data rows
+                headers = firstElement.map(String).filter(h => h && h.trim());
+                dataRows = data.slice(1);
+            } else {
+                // All elements are complex arrays
+                headers = Object.keys(firstElement[0] || {});
+                dataRows = data;
+            }
+        } else if (typeof firstElement === 'object' && firstElement !== null) {
+            // First element is an object - all elements are data rows with keys as headers
+            headers = Object.keys(firstElement);
+            dataRows = data;
+        } else {
+            // Unknown format
+            return (
+                <div className="py-4 text-center text-sm text-muted-foreground">
+                    Format data tidak dapat ditampilkan.
+                </div>
+            );
+        }
+    }
+
+    console.log('Detected headers and rows:', { 
+        headers, 
+        dataRowsCount: dataRows.length,
+        firstDataRow: dataRows[0]
+    });
+
+    if (headers.length === 0) {
+        console.warn('No headers found in document data', { data, firstElement: data[0] });
         return (
             <div className="py-4 text-center text-sm text-muted-foreground">
-                Format data tidak dapat ditampilkan.
+                Header tidak ditemukan dalam data.
             </div>
         );
     }
@@ -141,9 +175,16 @@ const renderDocumentData = (data: unknown[] | null) => {
                                 }
                             >
                                 {headers.map((header, colIndex) => {
-                                    const value = Array.isArray(row)
-                                        ? row[colIndex]
-                                        : row[header];
+                                    // Handle both array and object data rows
+                                    let value: unknown;
+                                    if (Array.isArray(row)) {
+                                        value = row[colIndex];
+                                    } else if (typeof row === 'object' && row !== null) {
+                                        value = (row as Record<string, unknown>)[header];
+                                    } else {
+                                        value = undefined;
+                                    }
+                                    
                                     const formattedValue = formatCellData(
                                         value,
                                         header,
@@ -152,7 +193,7 @@ const renderDocumentData = (data: unknown[] | null) => {
                                         <td
                                             key={colIndex}
                                             className="max-w-[150px] truncate px-2 py-1 whitespace-nowrap text-gray-900 dark:text-gray-100"
-                                            title={String(value)}
+                                            title={String(value ?? '')}
                                         >
                                             {formattedValue.value}
                                         </td>

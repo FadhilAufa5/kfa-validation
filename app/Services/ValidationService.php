@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Validation;
+use App\Models\MappedUploadedFile;
 
 class ValidationService
 {
@@ -20,28 +21,39 @@ class ValidationService
         string $documentType,
         string $documentCategory,
         int $headerRow = 1,
-        ?int $userId = null
+        ?int $userId = null,
+        ?int $existingValidationId = null
     ): array {
         $startTime = microtime(true);
 
         Log::info('Starting validation process', [
             'type' => $documentCategory,
             'documentType' => $documentType,
-            'filename' => $filename
+            'filename' => $filename,
+            'existing_validation_id' => $existingValidationId
         ]);
 
         $config = $this->getValidationConfig($documentType, $documentCategory);
         $validationRecords = $this->loadValidationData($config);
-        $uploadedData = $this->fileProcessingService->readFileData($filename, $headerRow);
+        
+        // Load uploaded data from mapped_uploaded_files table instead of reading from storage
+        $mappedRecords = $this->loadMappedUploadedData($filename, $documentType, $documentCategory);
+        
+        if (empty($mappedRecords)) {
+            throw new \Exception('No mapped data found for this file. Please ensure the file was properly mapped before validation.');
+        }
 
-        $this->validateRequiredColumns($uploadedData['headers'], $config);
+        Log::info('Loaded mapped uploaded data', [
+            'filename' => $filename,
+            'record_count' => count($mappedRecords)
+        ]);
 
         $validationMap = $this->buildValidationMap($validationRecords, $config);
-        $uploadedMapByGroup = $this->buildUploadedMap($uploadedData['data'], $config);
+        $uploadedMapByGroup = $this->buildUploadedMapFromMappedData($mappedRecords);
 
         [$invalidGroups, $matchedGroups] = $this->compareData($uploadedMapByGroup, $validationMap);
-        [$invalidRows, $matchedRows, $mismatchedRecordCount] = $this->categorizeRows(
-            $uploadedData['data'],
+        [$invalidRows, $matchedRows, $mismatchedRecordCount] = $this->categorizeRowsFromMappedData(
+            $mappedRecords,
             $invalidGroups,
             $validationMap,
             $uploadedMapByGroup,
@@ -61,13 +73,14 @@ class ValidationService
             $filename,
             $documentType,
             $documentCategory,
-            count($uploadedData['data']),
+            count($mappedRecords),
             $mismatchedRecordCount,
             $invalidGroups,
             $invalidRows,
             $matchedGroups,
             $matchedRows,
-            $userId
+            $userId,
+            $existingValidationId
         );
 
         ActivityLogger::log(
@@ -199,6 +212,47 @@ class ValidationService
         return $map;
     }
 
+    /**
+     * Load mapped uploaded data from database
+     */
+    private function loadMappedUploadedData(
+        string $filename,
+        string $documentType,
+        string $documentCategory
+    ): array {
+        $records = MappedUploadedFile::byFilename($filename)
+            ->byDocumentType($documentType)
+            ->byDocumentCategory($documentCategory)
+            ->orderBy('row_index')
+            ->get();
+
+        return $records->toArray();
+    }
+
+    /**
+     * Build uploaded data map from MappedUploadedFile records
+     * Groups by connector and sums the sum_field
+     */
+    private function buildUploadedMapFromMappedData(array $mappedRecords): array
+    {
+        $map = [];
+
+        foreach ($mappedRecords as $record) {
+            $key = trim($record['connector'] ?? '');
+            if ($key === '') continue;
+
+            $value = $this->cleanAndParseFloat($record['sum_field'] ?? 0);
+            $map[$key] = ($map[$key] ?? 0) + $value;
+        }
+
+        Log::info('Built uploaded map from mapped data', [
+            'unique_keys' => count($map),
+            'total_records_processed' => count($mappedRecords)
+        ]);
+
+        return $map;
+    }
+
     private function compareData(array $uploadedMapByGroup, array $validationMap): array
     {
         $invalidGroups = [];
@@ -322,6 +376,77 @@ class ValidationService
         return [$invalidRows, $matchedRows, $mismatchedRecordCount];
     }
 
+    /**
+     * Categorize rows from mapped data (reads from mapped_uploaded_files table)
+     */
+    private function categorizeRowsFromMappedData(
+        array $mappedRecords,
+        array $invalidGroups,
+        array $validationMap,
+        array $uploadedMapByGroup,
+        array $config
+    ): array {
+        $invalidRows = [];
+        $matchedRows = [];
+        $mismatchedRecordCount = 0;
+
+        foreach ($mappedRecords as $record) {
+            $key = trim($record['connector'] ?? '');
+            if ($key === '') continue;
+
+            $validationValue = $validationMap[$key] ?? null;
+            $uploadedValue = $this->cleanAndParseFloat($record['sum_field'] ?? 0);
+            $groupUploadedValue = $uploadedMapByGroup[$key] ?? 0;
+            $rowIndex = $record['row_index'] ?? 0;
+
+            $isMatched = false;
+            $isIgnoredZero = false;
+
+            if ($validationValue === null) {
+                if ($groupUploadedValue == 0) {
+                    $isIgnoredZero = true;
+                    $matchedRows[] = [
+                        'row_index' => $rowIndex,
+                        'key_value' => $key,
+                        'validation_source_total' => $validationValue,
+                        'uploaded_total' => $uploadedValue,
+                    ];
+                } else {
+                    $isMatched = false;
+                }
+            } else {
+                $diff = abs($groupUploadedValue - $validationValue);
+                $isMatched = $diff <= self::TOLERANCE;
+            }
+
+            if (!$isMatched && !$isIgnoredZero && isset($invalidGroups[$key])) {
+                $error = $invalidGroups[$key]['error'];
+                $invalidRows[] = [
+                    'row_index' => $rowIndex,
+                    'key_value' => $key,
+                    'error' => $error
+                ];
+                $mismatchedRecordCount++;
+            } else if ($isMatched && !$isIgnoredZero) {
+                $matchedRows[] = [
+                    'row_index' => $rowIndex,
+                    'key_value' => $key,
+                    'validation_source_total' => $validationValue,
+                    'uploaded_total' => $uploadedValue,
+                ];
+            }
+        }
+
+        Log::info('Categorized rows from mapped data', [
+            'total_records' => count($mappedRecords),
+            'invalid_rows' => count($invalidRows),
+            'matched_rows' => count($matchedRows),
+            'mismatched_count' => $mismatchedRecordCount
+        ]);
+
+        return [$invalidRows, $matchedRows, $mismatchedRecordCount];
+    }
+
     private function saveValidationResult(
         string $filename,
         string $documentType,
@@ -332,7 +457,8 @@ class ValidationService
         array $invalidRows,
         array $matchedGroups,
         array $matchedRows,
-        ?int $userId
+        ?int $userId,
+        ?int $existingValidationId = null
     ): Validation {
         $matchedRecords = $totalRecords - $mismatchedRecords;
         $score = $totalRecords > 0 ? round(($matchedRecords / $totalRecords) * 100, 2) : 100.00;
@@ -350,27 +476,58 @@ class ValidationService
             $invalidRows,
             $matchedGroups,
             $matchedRows,
-            $userId
+            $userId,
+            $existingValidationId
         ) {
-            // Create the main validation record
-            $validation = Validation::create([
-                'file_name' => $filename,
-                'role' => auth()->user()?->role ?? 'unknown',
-                'user_id' => $userId ?? auth()->user()?->id ?? null,
-                'document_type' => $documentType,
-                'document_category' => ucfirst(strtolower($documentCategory)),
-                'score' => $score,
-                'total_records' => $totalRecords,
-                'matched_records' => $matchedRecords,
-                'mismatched_records' => $mismatchedRecords,
-                // Keep validation_details for backward compatibility with existing data
-                'validation_details' => [
-                    'invalid_groups' => $invalidGroups,
-                    'invalid_rows' => $invalidRows,
-                    'matched_groups' => $matchedGroups,
-                    'matched_rows' => $matchedRows,
-                ],
-            ]);
+            // If existing validation ID provided, update it instead of creating new
+            if ($existingValidationId) {
+                $validation = Validation::find($existingValidationId);
+                if ($validation) {
+                    // Delete existing relationships to avoid duplicates
+                    $validation->invalidGroups()->delete();
+                    $validation->invalidRows()->delete();
+                    $validation->matchedGroups()->delete();
+                    $validation->matchedRows()->delete();
+                    
+                    // Update validation record
+                    $validation->update([
+                        'score' => $score,
+                        'total_records' => $totalRecords,
+                        'matched_records' => $matchedRecords,
+                        'mismatched_records' => $mismatchedRecords,
+                        'status' => 'completed',
+                        'validation_details' => [
+                            'invalid_groups' => $invalidGroups,
+                            'invalid_rows' => $invalidRows,
+                            'matched_groups' => $matchedGroups,
+                            'matched_rows' => $matchedRows,
+                        ],
+                    ]);
+                } else {
+                    throw new \Exception("Validation record with ID {$existingValidationId} not found");
+                }
+            } else {
+                // Create the main validation record
+                $validation = Validation::create([
+                    'file_name' => $filename,
+                    'role' => auth()->user()?->role ?? 'unknown',
+                    'user_id' => $userId ?? auth()->user()?->id ?? null,
+                    'document_type' => $documentType,
+                    'document_category' => ucfirst(strtolower($documentCategory)),
+                    'score' => $score,
+                    'total_records' => $totalRecords,
+                    'matched_records' => $matchedRecords,
+                    'mismatched_records' => $mismatchedRecords,
+                    'status' => 'completed',
+                    // Keep validation_details for backward compatibility with existing data
+                    'validation_details' => [
+                        'invalid_groups' => $invalidGroups,
+                        'invalid_rows' => $invalidRows,
+                        'matched_groups' => $matchedGroups,
+                        'matched_rows' => $matchedRows,
+                    ],
+                ]);
+            }
 
             // Save invalid groups to separate table
             foreach ($invalidGroups as $key => $group) {

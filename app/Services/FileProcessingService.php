@@ -23,40 +23,86 @@ class FileProcessingService
         ]);
 
         $uploadDir = "uploads";
-        $csvPath = storage_path("app/{$uploadDir}/{$originalName}.csv");
-
+        
+        // Ensure the uploads directory exists
         if (!Storage::exists($uploadDir)) {
             Storage::makeDirectory($uploadDir);
+            Log::info('Created uploads directory', ['path' => Storage::path($uploadDir)]);
         }
 
-        if (in_array($extension, ['xls', 'xlsx'])) {
-            $this->convertExcelToCsv($file->getRealPath(), $csvPath);
-        } else {
-            $file->storeAs($uploadDir, "{$originalName}.csv");
+        $csvPath = Storage::path("{$uploadDir}/{$originalName}.csv");
+
+        try {
+            if (in_array($extension, ['xls', 'xlsx'])) {
+                $this->convertExcelToCsv($file->getRealPath(), $csvPath);
+            } else {
+                $file->storeAs($uploadDir, "{$originalName}.csv");
+            }
+
+            Log::info('File saved successfully', [
+                'filename' => "{$originalName}.csv",
+                'path' => $csvPath
+            ]);
+
+            return "{$originalName}.csv";
+        } catch (\Exception $e) {
+            Log::error('File save failed', [
+                'filename' => $originalName,
+                'error' => $e->getMessage(),
+                'csv_path' => $csvPath,
+                'directory_exists' => is_dir(dirname($csvPath)),
+                'directory_writable' => is_writable(dirname($csvPath))
+            ]);
+            throw new \Exception('Failed to save file: ' . $e->getMessage());
         }
-
-        Log::info('File saved successfully', ['filename' => "{$originalName}.csv"]);
-
-        return "{$originalName}.csv";
     }
 
     private function convertExcelToCsv(string $sourcePath, string $destinationPath): void
     {
-        Log::info('Converting Excel to CSV', ['source' => $sourcePath]);
+        Log::info('Converting Excel to CSV', [
+            'source' => $sourcePath,
+            'destination' => $destinationPath
+        ]);
 
-        $reader = IOFactory::createReaderForFile($sourcePath);
-        $reader->setReadDataOnly(false);
-        $spreadsheet = $reader->load($sourcePath);
+        // Ensure destination directory exists
+        $destinationDir = dirname($destinationPath);
+        if (!is_dir($destinationDir)) {
+            if (!mkdir($destinationDir, 0755, true)) {
+                throw new \Exception("Failed to create directory: {$destinationDir}");
+            }
+            Log::info('Created directory for CSV', ['path' => $destinationDir]);
+        }
 
-        $writer = new Csv($spreadsheet);
-        $writer->setDelimiter(',');
-        $writer->setEnclosure('"');
-        $writer->setLineEnding("\r\n");
-        $writer->setSheetIndex(0);
-        $writer->setUseBOM(true);
-        $writer->save($destinationPath);
+        // Check if directory is writable
+        if (!is_writable($destinationDir)) {
+            throw new \Exception("Directory is not writable: {$destinationDir}");
+        }
 
-        Log::info('Excel converted to CSV successfully');
+        try {
+            $reader = IOFactory::createReaderForFile($sourcePath);
+            $reader->setReadDataOnly(false);
+            $spreadsheet = $reader->load($sourcePath);
+
+            $writer = new Csv($spreadsheet);
+            $writer->setDelimiter(',');
+            $writer->setEnclosure('"');
+            $writer->setLineEnding("\r\n");
+            $writer->setSheetIndex(0);
+            $writer->setUseBOM(true);
+            $writer->save($destinationPath);
+
+            Log::info('Excel converted to CSV successfully', [
+                'destination' => $destinationPath,
+                'file_size' => filesize($destinationPath)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Excel to CSV conversion failed', [
+                'source' => $sourcePath,
+                'destination' => $destinationPath,
+                'error' => $e->getMessage()
+            ]);
+            throw new \Exception('Failed to convert Excel to CSV: ' . $e->getMessage());
+        }
     }
 
     public function readFileData(string $filename, int $headerRow = 1): array

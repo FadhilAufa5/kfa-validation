@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use App\Models\MappedUploadedFile;
 
 class DocumentComparisonService
 {
@@ -46,37 +47,84 @@ class DocumentComparisonService
 
     private function getUploadedData(string $filename, string $key, array $config, int $headerRow): array
     {
-        $path = "uploads/{$filename}";
-
-        if (!Storage::exists($path)) {
-            throw new \Exception('Uploaded file not found');
-        }
-
         $connectorColumn = $config['connector'][0];
         $sumField = $config['sum'][0] ?? null;
         
-        // Use processFileWithHeader to properly read file with header offset
-        $processedData = $this->fileProcessingService->processFileWithHeader($filename, $headerRow);
+        // Try to load from mapped_uploaded_files table first
+        $mappedRecords = MappedUploadedFile::where('filename', $filename)
+            ->where('connector', $key)
+            ->orderBy('row_index')
+            ->get();
+
+        if ($mappedRecords->isEmpty()) {
+            // Fallback: Try to read from storage if file still exists
+            $path = "uploads/{$filename}";
+            
+            if (!Storage::exists($path)) {
+                throw new \Exception('File data not found. The file may have been processed and removed from storage.');
+            }
+
+            Log::warning('Falling back to reading from storage file', [
+                'filename' => $filename,
+                'key' => $key
+            ]);
+            
+            // Use processFileWithHeader to properly read file with header offset
+            $processedData = $this->fileProcessingService->processFileWithHeader($filename, $headerRow);
+            
+            // Filter data by key
+            $filteredData = array_filter($processedData['data'], function ($row) use ($connectorColumn, $key) {
+                $rowKey = trim((string) ($row[$connectorColumn] ?? ''));
+                $searchKey = trim((string) $key);
+                return strcasecmp($rowKey, $searchKey) === 0;
+            });
+
+            // Get headers from the processed data
+            $headers = !empty($processedData['data']) ? array_keys($processedData['data'][0]) : [];
+
+            Log::info('Uploaded Data Response (from storage)', [
+                'connector_column' => $connectorColumn,
+                'key' => $key,
+                'header_row' => $headerRow,
+                'total_rows' => count($processedData['data']),
+                'filtered_count' => count($filteredData)
+            ]);
+
+            // Return data in the same format as before: [headers, ...rows]
+            return [
+                'filename' => $filename,
+                'connector_column' => $connectorColumn,
+                'sum_field' => $sumField,
+                'key' => $key,
+                'data' => [
+                    $headers,
+                    ...array_values($filteredData)
+                ],
+            ];
+        }
+
+        // Convert mapped records to the expected format
+        $headers = [];
+        $rows = [];
         
-        // Filter data by key
-        $filteredData = array_filter($processedData['data'], function ($row) use ($connectorColumn, $key) {
-            $rowKey = trim((string) ($row[$connectorColumn] ?? ''));
-            $searchKey = trim((string) $key);
-            return strcasecmp($rowKey, $searchKey) === 0;
-        });
+        foreach ($mappedRecords as $record) {
+            $rawData = $record->raw_data;
+            
+            if (empty($headers) && is_array($rawData)) {
+                $headers = array_keys($rawData);
+            }
+            
+            if (is_array($rawData)) {
+                $rows[] = $rawData;
+            }
+        }
 
-        // Get headers from the processed data
-        $headers = !empty($processedData['data']) ? array_keys($processedData['data'][0]) : [];
-
-        Log::info('Uploaded Data Response', [
+        Log::info('Uploaded Data Response (from mapped_uploaded_files)', [
             'connector_column' => $connectorColumn,
             'key' => $key,
-            'header_row' => $headerRow,
-            'total_rows' => count($processedData['data']),
-            'filtered_count' => count($filteredData)
+            'filtered_count' => count($rows)
         ]);
 
-        // Return data in the same format as before: [headers, ...rows]
         return [
             'filename' => $filename,
             'connector_column' => $connectorColumn,
@@ -84,7 +132,7 @@ class DocumentComparisonService
             'key' => $key,
             'data' => [
                 $headers,
-                ...array_values($filteredData)
+                ...$rows
             ],
         ];
     }
