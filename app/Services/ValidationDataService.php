@@ -109,8 +109,8 @@ class ValidationDataService
                 return [
                     'key' => $group->key_value,
                     'uploaded_total' => (float) $group->uploaded_total,
-                    'source_total' => (float) $group->validation_source_total,
-                    'difference' => (float) $group->uploaded_total - (float) ($group->validation_source_total ?? 0),
+                    'source_total' => (float) $group->source_total,
+                    'difference' => (float) $group->uploaded_total - (float) ($group->source_total ?? 0),
                     'note' => $group->note ?? 'Sum Matched',
                     'is_individual_row' => false,
                 ];
@@ -154,8 +154,8 @@ class ValidationDataService
             $allItems[] = [
                 'key' => $key,
                 'uploaded_total' => $group['uploaded_total'],
-                'source_total' => $group['validation_source_total'],
-                'difference' => $group['uploaded_total'] - ($group['validation_source_total'] ?? 0),
+                'source_total' => $group['source_total'],
+                'difference' => $group['uploaded_total'] - ($group['source_total'] ?? 0),
                 'note' => $group['note'] ?? 'Sum Matched',
                 'is_individual_row' => false,
             ];
@@ -410,8 +410,8 @@ class ValidationDataService
                     'row_index' => 0, // Groups don't have row_index
                     'key' => $group->key_value,
                     'uploaded_total' => (float) $group->uploaded_total,
-                    'source_total' => (float) $group->validation_source_total,
-                    'difference' => (float) $group->uploaded_total - (float) ($group->validation_source_total ?? 0),
+                    'source_total' => (float) $group->source_total,
+                    'difference' => (float) $group->uploaded_total - (float) ($group->source_total ?? 0),
                     'note' => $group->note ?? 'Sum Matched',
                     'is_individual_row' => false,
                 ];
@@ -538,8 +538,8 @@ class ValidationDataService
                 'row_index' => 0, // Groups don't have row_index
                 'key' => $key,
                 'uploaded_total' => $group['uploaded_total'],
-                'source_total' => $group['validation_source_total'],
-                'difference' => $group['uploaded_total'] - ($group['validation_source_total'] ?? 0),
+                'source_total' => $group['source_total'],
+                'difference' => $group['uploaded_total'] - ($group['source_total'] ?? 0),
                 'note' => $note,
                 'is_individual_row' => false,
             ];
