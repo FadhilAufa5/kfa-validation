@@ -105,17 +105,13 @@ export default function UploadPage({
     const [validationResult, setValidationResult] =
         useState<ValidationResult | null>(null);
 
-    // Auto-redirect to processed route after validation is complete (for both valid and invalid)
+    // Auto-redirect to history page after validation is complete
     useEffect(() => {
         if (step === 'validation_complete' && validationResult) {
-            // Redirect to validation show page after a short delay to show the result
+            // Redirect to history page after a short delay to show the result
             const timer = setTimeout(() => {
-                router.visit(
-                    route('penjualan.show', {
-                        id: validationResult.validation_id,
-                    }),
-                );
-            }, 3000); // 3 seconds delay to show validation result before redirect
+                router.visit(route('penjualan.history'));
+            }, 2000); // 2 seconds delay to show validation result before redirect
 
             // Cleanup the timer if component unmounts
             return () => clearTimeout(timer);

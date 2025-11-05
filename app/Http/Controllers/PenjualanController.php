@@ -9,6 +9,10 @@ use App\Services\FileProcessingService;
 use App\Services\ValidationService;
 use App\Services\DocumentComparisonService;
 use App\Services\ValidationDataService;
+use App\Services\ActivityLogger;
+use App\Services\MappedFileService;
+use App\Jobs\ProcessFileValidation;
+use App\Models\Validation;
 
 class PenjualanController extends Controller
 {
@@ -16,7 +20,8 @@ class PenjualanController extends Controller
         private FileProcessingService $fileProcessingService,
         private ValidationService $validationService,
         private DocumentComparisonService $documentComparisonService,
-        private ValidationDataService $validationDataService
+        private ValidationDataService $validationDataService,
+        private MappedFileService $mappedFileService
     ) {}
 
     public function index()
@@ -80,21 +85,241 @@ class PenjualanController extends Controller
     {
         $request->validate([
             'filename' => 'required|string',
+            'async' => 'sometimes|boolean',
         ]);
 
+        $filename = $request->input('filename');
+        $headerRow = (int) $request->input('headerRow', 1);
+        $userId = auth()->user()?->id;
+        $async = $request->input('async', true); // Default to async
+
+        // If async is requested, use the async method
+        if ($async) {
+            return $this->validateFileAsync($request, $type);
+        }
+
+        // Otherwise, process synchronously (original logic)
+        ActivityLogger::log(
+            action: 'Validasi File Dimulai',
+            description: "Memulai validasi file {$filename} untuk dokumen Penjualan {$type}",
+            entityType: 'Validation',
+            entityId: null,
+            metadata: [
+                'filename' => $filename,
+                'document_type' => 'Penjualan',
+                'document_category' => ucfirst(strtolower($type)),
+                'header_row' => $headerRow,
+            ]
+        );
+
         try {
-            $result = $this->validationService->validateDocument(
-                filename: $request->input('filename'),
+            // Step 1: Map uploaded file data to database
+            Log::info('Starting file mapping process', [
+                'filename' => $filename,
+                'document_type' => 'penjualan',
+                'document_category' => $type,
+                'header_row' => $headerRow
+            ]);
+
+            $mappingResult = $this->mappedFileService->mapUploadedFile(
+                filename: $filename,
                 documentType: 'penjualan',
                 documentCategory: $type,
-                headerRow: (int) $request->input('headerRow', 1),
-                userId: auth()->user()?->id
+                headerRow: $headerRow,
+                userId: $userId
             );
+
+            Log::info('File mapping completed successfully', [
+                'filename' => $filename,
+                'mapped_records' => $mappingResult['mapped_records'],
+                'skipped_rows' => $mappingResult['skipped_rows'],
+                'failed_rows' => $mappingResult['failed_rows']
+            ]);
+
+            ActivityLogger::log(
+                action: 'File Mapping Selesai',
+                description: "File {$filename} berhasil dimapping dengan {$mappingResult['mapped_records']} records",
+                entityType: 'Validation',
+                entityId: null,
+                metadata: [
+                    'filename' => $filename,
+                    'document_type' => 'Penjualan',
+                    'document_category' => ucfirst(strtolower($type)),
+                    'mapped_records' => $mappingResult['mapped_records'],
+                    'skipped_rows' => $mappingResult['skipped_rows'],
+                    'failed_rows' => $mappingResult['failed_rows']
+                ]
+            );
+
+            // Step 2: Proceed with validation (no existing validation ID for sync)
+            $result = $this->validationService->validateDocument(
+                filename: $filename,
+                documentType: 'penjualan',
+                documentCategory: $type,
+                headerRow: $headerRow,
+                userId: $userId,
+                existingValidationId: null
+            );
+
+            // Include mapping info in response
+            $result['mapping_info'] = [
+                'total_rows' => $mappingResult['total_rows'],
+                'mapped_records' => $mappingResult['mapped_records'],
+                'skipped_rows' => $mappingResult['skipped_rows'],
+                'failed_rows' => $mappingResult['failed_rows']
+            ];
 
             return response()->json($result);
         } catch (\Exception $e) {
-            Log::error('Validation failed', ['error' => $e->getMessage()]);
+            Log::error('Validation failed', [
+                'filename' => $filename,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            ActivityLogger::log(
+                action: 'Validasi File Gagal',
+                description: "Validasi file {$filename} gagal: {$e->getMessage()}",
+                entityType: 'Validation',
+                entityId: null,
+                metadata: [
+                    'filename' => $filename,
+                    'document_type' => 'Penjualan',
+                    'document_category' => ucfirst(strtolower($type)),
+                    'error' => $e->getMessage()
+                ]
+            );
+            
             return response()->json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    public function validateFileAsync(Request $request, $type)
+    {
+        $request->validate([
+            'filename' => 'required|string',
+        ]);
+
+        $filename = $request->input('filename');
+        $headerRow = (int) $request->input('headerRow', 1);
+        $userId = auth()->user()?->id;
+
+        ActivityLogger::log(
+            action: 'Validasi File Async Dimulai',
+            description: "Memulai validasi async file {$filename} untuk dokumen Penjualan {$type}",
+            entityType: 'Validation',
+            entityId: null,
+            metadata: [
+                'filename' => $filename,
+                'document_type' => 'Penjualan',
+                'document_category' => ucfirst(strtolower($type)),
+                'header_row' => $headerRow,
+                'async' => true,
+            ]
+        );
+
+        try {
+            // Create a placeholder validation record
+            $validation = Validation::create([
+                'file_name' => $filename,
+                'role' => auth()->user()?->role ?? 'unknown',
+                'user_id' => $userId,
+                'document_type' => 'penjualan',
+                'document_category' => ucfirst(strtolower($type)),
+                'score' => 0,
+                'total_records' => 0,
+                'matched_records' => 0,
+                'mismatched_records' => 0,
+                'status' => 'processing',
+                'processing_details' => [
+                    'header_row' => $headerRow,
+                    'started_at' => now()->toISOString()
+                ]
+            ]);
+
+            // Dispatch the job
+            ProcessFileValidation::dispatch(
+                filename: $filename,
+                documentType: 'penjualan',
+                documentCategory: $type,
+                headerRow: $headerRow,
+                userId: $userId,
+                validationId: $validation->id
+            );
+
+            Log::info('File validation job dispatched', [
+                'validation_id' => $validation->id,
+                'filename' => $filename,
+                'document_type' => 'penjualan',
+                'document_category' => $type
+            ]);
+
+            return response()->json([
+                'status' => 'processing',
+                'message' => 'File validation has been queued for processing',
+                'validation_id' => $validation->id,
+                'check_status_url' => route('penjualan.validation.status', ['id' => $validation->id])
+            ], 202);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to dispatch validation job', [
+                'filename' => $filename,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            ActivityLogger::log(
+                action: 'Validasi File Async Gagal',
+                description: "Gagal memulai validasi async file {$filename}: {$e->getMessage()}",
+                entityType: 'Validation',
+                entityId: null,
+                metadata: [
+                    'filename' => $filename,
+                    'document_type' => 'Penjualan',
+                    'document_category' => ucfirst(strtolower($type)),
+                    'error' => $e->getMessage()
+                ]
+            );
+            
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getValidationStatus($id)
+    {
+        try {
+            $validation = Validation::find($id);
+
+            if (!$validation) {
+                return response()->json(['error' => 'Validation not found'], 404);
+            }
+
+            $response = [
+                'validation_id' => $validation->id,
+                'status' => $validation->status,
+                'file_name' => $validation->file_name,
+                'document_type' => $validation->document_type,
+                'document_category' => $validation->document_category,
+                'processing_details' => $validation->processing_details,
+            ];
+
+            // If completed, include full results
+            if ($validation->status === 'completed') {
+                $response['score'] = $validation->score;
+                $response['total_records'] = $validation->total_records;
+                $response['matched_records'] = $validation->matched_records;
+                $response['mismatched_records'] = $validation->mismatched_records;
+                $response['view_url'] = route('penjualan.show', ['id' => $validation->id]);
+            }
+
+            return response()->json($response);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get validation status', [
+                'validation_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 

@@ -73,7 +73,7 @@ return [
                 'nama_bm' => 'NAMA BM',
                 'kode_outlet' => 'KODE OUTLET',
                 'nama_outlet' => 'NAMA OUTLET',
-                'date' => 'TANGGAL',
+                'date' => 'BULAN',
             ],
         ],
         'konsi' => [

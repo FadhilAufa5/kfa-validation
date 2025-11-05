@@ -48,6 +48,7 @@ Route::get('/penjualan/konsi', [PenjualanController::class, 'konsi'])->name('pen
 // File Operations (Upload, Validation, Preview)
 Route::post('/penjualan/save/{type}', [PenjualanController::class, 'save'])->name('penjualan.save');
 Route::post('/penjualan/validate-{type}', [PenjualanController::class, 'validateFile'])->name('penjualan.validateFile');
+Route::get('/penjualan/validation/{id}/status', [PenjualanController::class, 'getValidationStatus'])->name('penjualan.validation.status');
 Route::get('/penjualan/preview/{filename}', [PenjualanController::class, 'preview'])->name('penjualan.preview');
 Route::post('/penjualan/process/{filename}', [PenjualanController::class, 'processWithHeader'])->name('penjualan.processWithHeader');
 
