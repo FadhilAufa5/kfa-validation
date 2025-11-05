@@ -83,17 +83,36 @@ class ValidationDataService
         // Try to get from relationships first
         if ($validation->matchedRows()->exists()) {
             $matchedGroupsKeyed = $validation->matchedGroups->keyBy('key_value');
+            
+            // Check if any group has more than 1 matched row
+            $groupCounts = $validation->matchedRows->groupBy('key_value')->map->count();
+            $hasMultipleRowsPerGroup = $groupCounts->filter(fn($count) => $count > 1)->isNotEmpty();
 
-            return $validation->matchedRows->map(function ($row) use ($matchedGroupsKeyed) {
-                $groupInfo = $matchedGroupsKeyed->get($row->key_value);
+            // If all groups have only 1 row, display individual rows
+            if (!$hasMultipleRowsPerGroup) {
+                return $validation->matchedRows->map(function ($row) use ($matchedGroupsKeyed) {
+                    $groupInfo = $matchedGroupsKeyed->get($row->key_value);
 
+                    return [
+                        'key' => $row->key_value,
+                        'uploaded_total' => (float) $row->uploaded_total,
+                        'source_total' => (float) $row->validation_source_total,
+                        'difference' => (float) $row->uploaded_total - (float) ($row->validation_source_total ?? 0),
+                        'note' => $groupInfo?->note ?? 'Sum Matched',
+                        'is_individual_row' => true,
+                    ];
+                })->toArray();
+            }
+
+            // If any group has more than 1 row, display groups
+            return $validation->matchedGroups->map(function ($group) {
                 return [
-                    'key' => $row->key_value,
-                    'uploaded_total' => (float) $row->uploaded_total,
-                    'source_total' => (float) $row->validation_source_total,
-                    'difference' => (float) $row->uploaded_total - (float) ($row->validation_source_total ?? 0),
-                    'note' => $groupInfo?->note ?? 'Sum Matched',
-                    'is_individual_row' => true,
+                    'key' => $group->key_value,
+                    'uploaded_total' => (float) $group->uploaded_total,
+                    'source_total' => (float) $group->validation_source_total,
+                    'difference' => (float) $group->uploaded_total - (float) ($group->validation_source_total ?? 0),
+                    'note' => $group->note ?? 'Sum Matched',
+                    'is_individual_row' => false,
                 ];
             })->toArray();
         }
@@ -102,18 +121,43 @@ class ValidationDataService
         $matchedRows = $validation->validation_details['matched_rows'] ?? [];
         $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
 
-        $allItems = [];
+        // Check if any group has more than 1 matched row
+        $groupCounts = [];
         foreach ($matchedRows as $row) {
             $key = $row['key_value'];
-            $groupInfo = $matchedGroups[$key] ?? null;
+            $groupCounts[$key] = ($groupCounts[$key] ?? 0) + 1;
+        }
+        $hasMultipleRowsPerGroup = !empty(array_filter($groupCounts, fn($count) => $count > 1));
 
+        // If all groups have only 1 row, display individual rows
+        if (!$hasMultipleRowsPerGroup) {
+            $allItems = [];
+            foreach ($matchedRows as $row) {
+                $key = $row['key_value'];
+                $groupInfo = $matchedGroups[$key] ?? null;
+
+                $allItems[] = [
+                    'key' => $key,
+                    'uploaded_total' => $row['uploaded_total'],
+                    'source_total' => $row['validation_source_total'],
+                    'difference' => $row['uploaded_total'] - ($row['validation_source_total'] ?? 0),
+                    'note' => $groupInfo['note'] ?? 'Sum Matched',
+                    'is_individual_row' => true,
+                ];
+            }
+            return $allItems;
+        }
+
+        // If any group has more than 1 row, display groups
+        $allItems = [];
+        foreach ($matchedGroups as $key => $group) {
             $allItems[] = [
                 'key' => $key,
-                'uploaded_total' => $row['uploaded_total'],
-                'source_total' => $row['validation_source_total'],
-                'difference' => $row['uploaded_total'] - ($row['validation_source_total'] ?? 0),
-                'note' => $groupInfo['note'] ?? 'Sum Matched',
-                'is_individual_row' => true,
+                'uploaded_total' => $group['uploaded_total'],
+                'source_total' => $group['validation_source_total'],
+                'difference' => $group['uploaded_total'] - ($group['validation_source_total'] ?? 0),
+                'note' => $group['note'] ?? 'Sum Matched',
+                'is_individual_row' => false,
             ];
         }
 
@@ -262,37 +306,114 @@ class ValidationDataService
 
         // Try to get from relationships first
         if ($validation->matchedRows()->exists()) {
-            $query = $validation->matchedRows();
+            // Check if any group has more than 1 matched row
+            $groupCounts = $validation->matchedRows->groupBy('key_value')->map->count();
+            $hasMultipleRowsPerGroup = $groupCounts->filter(fn($count) => $count > 1)->isNotEmpty();
+
+            // If all groups have only 1 row, display individual rows
+            if (!$hasMultipleRowsPerGroup) {
+                $query = $validation->matchedRows();
+
+                // Apply search filter
+                if (!empty($filters['search'])) {
+                    $query->where('key_value', 'LIKE', '%' . $filters['search'] . '%');
+                }
+
+                // Apply sorting
+                $sortKey = $filters['sort_key'] ?? 'row_index';
+                $sortDirection = $filters['sort_direction'] ?? 'asc';
+
+                $query->orderBy($sortKey, $sortDirection);
+
+                // Paginate
+                $perPage = $filters['per_page'] ?? 10;
+                $page = $filters['page'] ?? 1;
+                $results = $query->paginate($perPage, ['*'], 'page', $page);
+
+                $matchedGroupsKeyed = $validation->matchedGroups->keyBy('key_value');
+
+                $formattedData = array_map(function ($row) use ($matchedGroupsKeyed) {
+                    $groupInfo = $matchedGroupsKeyed->get($row->key_value);
+
+                    return [
+                        'row_index' => $row->row_index,
+                        'key' => $row->key_value,
+                        'uploaded_total' => (float) $row->uploaded_total,
+                        'source_total' => (float) $row->validation_source_total,
+                        'difference' => (float) $row->uploaded_total - (float) ($row->validation_source_total ?? 0),
+                        'note' => $groupInfo?->note ?? 'Sum Matched',
+                        'is_individual_row' => true,
+                    ];
+                }, $results->items());
+
+                // Get unique notes
+                $uniqueNotes = $validation->matchedGroups()
+                    ->distinct()
+                    ->pluck('note')
+                    ->toArray();
+
+                return [
+                    'data' => $formattedData,
+                    'pagination' => [
+                        'current_page' => $results->currentPage(),
+                        'per_page' => $results->perPage(),
+                        'total' => $results->total(),
+                        'total_pages' => $results->lastPage(),
+                    ],
+                    'filters' => [
+                        'search' => $filters['search'] ?? '',
+                        'note' => $filters['note'] ?? '',
+                    ],
+                    'sort' => [
+                        'key' => $sortKey,
+                        'direction' => $sortDirection,
+                    ],
+                    'uniqueFilters' => [
+                        'notes' => $uniqueNotes,
+                    ],
+                ];
+            }
+
+            // If any group has more than 1 row, display groups
+            $query = $validation->matchedGroups();
 
             // Apply search filter
             if (!empty($filters['search'])) {
                 $query->where('key_value', 'LIKE', '%' . $filters['search'] . '%');
             }
 
+            // Apply note filter
+            if (!empty($filters['note'])) {
+                $query->where('note', $filters['note']);
+            }
+
             // Apply sorting
-            $sortKey = $filters['sort_key'] ?? 'row_index';
+            $sortKey = $filters['sort_key'] ?? 'key_value';
             $sortDirection = $filters['sort_direction'] ?? 'asc';
 
-            $query->orderBy($sortKey, $sortDirection);
+            // Map sort key to database column
+            $dbSortKey = match($sortKey) {
+                'key' => 'key_value',
+                'row_index' => 'key_value', // Groups don't have row_index, sort by key instead
+                default => $sortKey
+            };
+
+            $query->orderBy($dbSortKey, $sortDirection);
 
             // Paginate
             $perPage = $filters['per_page'] ?? 10;
             $page = $filters['page'] ?? 1;
             $results = $query->paginate($perPage, ['*'], 'page', $page);
 
-            $matchedGroupsKeyed = $validation->matchedGroups->keyBy('key_value');
-
-            $formattedData = array_map(function ($row) use ($matchedGroupsKeyed) {
-                $groupInfo = $matchedGroupsKeyed->get($row->key_value);
-
+            $formattedData = array_map(function ($group) {
                 return [
-                    'row_index' => $row->row_index,
-                    'key' => $row->key_value,
-                    'uploaded_total' => (float) $row->uploaded_total,
-                    'source_total' => (float) $row->validation_source_total,
-                    'difference' => (float) $row->uploaded_total - (float) ($row->validation_source_total ?? 0),
-                    'note' => $groupInfo?->note ?? 'Sum Matched',
-                    'is_individual_row' => true,
+                    'row_index' => 0, // Groups don't have row_index
+                    'key' => $group->key_value,
+                    'uploaded_total' => (float) $group->uploaded_total,
+                    'source_total' => (float) $group->validation_source_total,
+                    'difference' => (float) $group->uploaded_total - (float) ($group->validation_source_total ?? 0),
+                    'note' => $group->note ?? 'Sum Matched',
+                    'is_individual_row' => false,
                 ];
             }, $results->items());
 
@@ -333,19 +454,80 @@ class ValidationDataService
         $matchedRows = $validation->validation_details['matched_rows'] ?? [];
         $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
 
+        // Check if any group has more than 1 matched row
+        $groupCounts = [];
+        foreach ($matchedRows as $row) {
+            $key = $row['key_value'];
+            $groupCounts[$key] = ($groupCounts[$key] ?? 0) + 1;
+        }
+        $hasMultipleRowsPerGroup = !empty(array_filter($groupCounts, fn($count) => $count > 1));
+
         $uniqueNotesSet = [];
         $filteredItems = [];
 
-        foreach ($matchedRows as $row) {
-            $key = $row['key_value'];
+        // If all groups have only 1 row, display individual rows
+        if (!$hasMultipleRowsPerGroup) {
+            foreach ($matchedRows as $row) {
+                $key = $row['key_value'];
 
+                if (isset($filters['search']) && $filters['search'] && stripos($key, $filters['search']) === false) {
+                    continue;
+                }
+
+                $groupInfo = $matchedGroups[$key] ?? null;
+                $note = $groupInfo['note'] ?? 'Sum Matched';
+
+                $uniqueNotesSet[$note] = true;
+
+                if (isset($filters['note']) && $filters['note'] && $note !== $filters['note']) {
+                    continue;
+                }
+
+                $filteredItems[] = [
+                    'row_index' => $row['row_index'],
+                    'key' => $key,
+                    'uploaded_total' => $row['uploaded_total'],
+                    'source_total' => $row['validation_source_total'],
+                    'difference' => $row['uploaded_total'] - ($row['validation_source_total'] ?? 0),
+                    'note' => $note,
+                    'is_individual_row' => true,
+                ];
+            }
+
+            $uniqueNotes = array_keys($uniqueNotesSet);
+
+            $filteredItems = $this->applySorting(
+                $filteredItems,
+                $filters['sort_key'] ?? 'row_index',
+                $filters['sort_direction'] ?? 'asc'
+            );
+
+            $pagination = $this->paginateResults($filteredItems, $filters['page'] ?? 1, $filters['per_page'] ?? 10);
+
+            return [
+                'data' => $pagination['data'],
+                'pagination' => $pagination['meta'],
+                'filters' => [
+                    'search' => $filters['search'] ?? '',
+                    'note' => $filters['note'] ?? '',
+                ],
+                'sort' => [
+                    'key' => $filters['sort_key'] ?? 'row_index',
+                    'direction' => $filters['sort_direction'] ?? 'asc',
+                ],
+                'uniqueFilters' => [
+                    'notes' => $uniqueNotes,
+                ],
+            ];
+        }
+
+        // If any group has more than 1 row, display groups
+        foreach ($matchedGroups as $key => $group) {
             if (isset($filters['search']) && $filters['search'] && stripos($key, $filters['search']) === false) {
                 continue;
             }
 
-            $groupInfo = $matchedGroups[$key] ?? null;
-            $note = $groupInfo['note'] ?? 'Sum Matched';
-
+            $note = $group['note'] ?? 'Sum Matched';
             $uniqueNotesSet[$note] = true;
 
             if (isset($filters['note']) && $filters['note'] && $note !== $filters['note']) {
@@ -353,13 +535,13 @@ class ValidationDataService
             }
 
             $filteredItems[] = [
-                'row_index' => $row['row_index'],
+                'row_index' => 0, // Groups don't have row_index
                 'key' => $key,
-                'uploaded_total' => $row['uploaded_total'],
-                'source_total' => $row['validation_source_total'],
-                'difference' => $row['uploaded_total'] - ($row['validation_source_total'] ?? 0),
+                'uploaded_total' => $group['uploaded_total'],
+                'source_total' => $group['validation_source_total'],
+                'difference' => $group['uploaded_total'] - ($group['validation_source_total'] ?? 0),
                 'note' => $note,
-                'is_individual_row' => true,
+                'is_individual_row' => false,
             ];
         }
 
@@ -367,7 +549,7 @@ class ValidationDataService
 
         $filteredItems = $this->applySorting(
             $filteredItems,
-            $filters['sort_key'] ?? 'row_index',
+            $filters['sort_key'] ?? 'key',
             $filters['sort_direction'] ?? 'asc'
         );
 
@@ -381,7 +563,7 @@ class ValidationDataService
                 'note' => $filters['note'] ?? '',
             ],
             'sort' => [
-                'key' => $filters['sort_key'] ?? 'row_index',
+                'key' => $filters['sort_key'] ?? 'key',
                 'direction' => $filters['sort_direction'] ?? 'asc',
             ],
             'uniqueFilters' => [

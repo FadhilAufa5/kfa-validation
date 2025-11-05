@@ -154,14 +154,23 @@ const MatchedGroupsTabContent = React.memo(
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead
-                                        className="cursor-pointer"
-                                        onClick={() =>
-                                            requestMatchedSort('row_index')
-                                        }
-                                    >
-                                        Baris {getMatchedSortIndicator('row_index')}
-                                    </TableHead>
+                                    {filteredAndSortedMatchedGroups.length > 0 &&
+                                        filteredAndSortedMatchedGroups[0]
+                                            .is_individual_row && (
+                                            <TableHead
+                                                className="cursor-pointer"
+                                                onClick={() =>
+                                                    requestMatchedSort(
+                                                        'row_index',
+                                                    )
+                                                }
+                                            >
+                                                Baris{' '}
+                                                {getMatchedSortIndicator(
+                                                    'row_index',
+                                                )}
+                                            </TableHead>
+                                        )}
                                     <TableHead
                                         className="cursor-pointer"
                                         onClick={() =>
@@ -215,9 +224,11 @@ const MatchedGroupsTabContent = React.memo(
                             <TableBody>
                                 {filteredAndSortedMatchedGroups.map((record) => (
                                     <TableRow key={`${record.key}-${record.row_index}`}>
-                                        <TableCell className="text-muted-foreground">
-                                            {record.row_index + 1}
-                                        </TableCell>
+                                        {record.is_individual_row && (
+                                            <TableCell className="text-muted-foreground">
+                                                {record.row_index + 1}
+                                            </TableCell>
+                                        )}
                                         <TableCell
                                             className="cursor-pointer font-medium text-blue-600 hover:text-blue-800 hover:underline"
                                             onClick={() =>
