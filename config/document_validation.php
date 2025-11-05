@@ -42,8 +42,8 @@ return [
     'penjualan' => [
         'reguler' => [
             'doc_val' => 'im_jual',
-            'connector' => ['no_transaksi', 'transaction_id'],
-            'sum' => ['total_omset', 'total_penjualan'],
+            'connector' => ['NOMOR TRANSAKSI', 'transaction_id'],
+            'sum' => ['TOTAL OMSET', 'total_penjualan'],
             'mapping' => [
                 'kode_bm' => 'KODE BM',
                 'nama_bm' => 'NAMA BM',
@@ -78,14 +78,14 @@ return [
         ],
         'konsi' => [
             'doc_val' => 'im_jual',
-            'connector' => ['id_transaksi', 'no_transaksi'],
-            'sum' => ['total_pembayaran', 'cogs'],
+            'connector' => ['ID Transaksi', 'transaction_id'],
+            'sum' => ['Total Pembayaran', 'cogs'],
             'mapping' => [
-                'kode_bm' => 'KODE BM',
-                'nama_bm' => 'NAMA BM',
-                'kode_outlet' => 'KODE OUTLET',
-                'nama_outlet' => 'NAMA OUTLET',
-                'date' => 'BULAN',
+                'kode_bm' => 'Kode Unit Bisnis',
+                'nama_bm' => 'Unit Bisnis',
+                'kode_outlet' => 'Kode Apotek',
+                'nama_outlet' => 'Nama Apotek',
+                'date' => 'LIPH Date',
             ],
         ],
     ],
