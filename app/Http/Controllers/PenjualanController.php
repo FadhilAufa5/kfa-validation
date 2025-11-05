@@ -22,7 +22,8 @@ class PenjualanController extends Controller
         private DocumentComparisonService $documentComparisonService,
         private ValidationDataService $validationDataService,
         private MappedFileService $mappedFileService
-    ) {}
+    ) {
+    }
 
     public function index()
     {
@@ -69,7 +70,7 @@ class PenjualanController extends Controller
     public function save(Request $request, $type)
     {
         $request->validate([
-            'document' => 'required|file|mimes:xlsx,xls,csv|max:16240',
+            'document' => 'required|file|mimes:xlsx,xls,csv|max:50240',
         ]);
 
         try {
@@ -176,7 +177,7 @@ class PenjualanController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             ActivityLogger::log(
                 action: 'Validasi File Gagal',
                 description: "Validasi file {$filename} gagal: {$e->getMessage()}",
@@ -189,7 +190,7 @@ class PenjualanController extends Controller
                     'error' => $e->getMessage()
                 ]
             );
-            
+
             return response()->json(['error' => $e->getMessage()], 400);
         }
     }
@@ -267,7 +268,7 @@ class PenjualanController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             ActivityLogger::log(
                 action: 'Validasi File Async Gagal',
                 description: "Gagal memulai validasi async file {$filename}: {$e->getMessage()}",
@@ -280,7 +281,7 @@ class PenjualanController extends Controller
                     'error' => $e->getMessage()
                 ]
             );
-            
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }

@@ -46,6 +46,7 @@ interface PageProps {
 
 type UploadStep =
     | 'initial'
+    | 'converting'
     | 'previewing'
     | 'processing'
     | 'validating'
@@ -93,6 +94,7 @@ export default function UploadPage({
     const [isLoading, setIsLoading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [apiError, setApiError] = useState<string | null>(null);
+    const [needsConversion, setNeedsConversion] = useState(false);
 
     const [uploadedFilename, setUploadedFilename] = useState<string | null>(
         null,
@@ -124,6 +126,7 @@ export default function UploadPage({
         setIsLoading(false);
         setUploadProgress(0);
         setApiError(null);
+        setNeedsConversion(false);
         setUploadedFilename(null);
         setPreviewData(null);
         setHeaderRow(1);
@@ -138,41 +141,64 @@ export default function UploadPage({
             return;
         }
 
+        // Check if file needs conversion (xlsx or xls)
+        const fileExtension = data.document.name.split('.').pop()?.toLowerCase();
+        const requiresConversion = fileExtension === 'xlsx' || fileExtension === 'xls';
+        setNeedsConversion(requiresConversion);
+
         setIsLoading(true);
         setApiError(null);
-        setStep('previewing');
+        setStep(requiresConversion ? 'converting' : 'previewing');
         setUploadProgress(0);
 
+        // 🔥 Pastikan FormData langsung dari File object
         const formData = new FormData();
-        formData.append('document', data.document);
+        formData.append('document', data.document); // nama harus sama dengan backend
 
         try {
+            console.log('🚀 Mulai upload file ke:', saveUrl);
+            if (requiresConversion) {
+                console.log('📋 File requires conversion from', fileExtension, 'to CSV');
+            }
+
             const uploadResponse = await axios.post(saveUrl, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
+                withCredentials: true, // penting untuk Laravel session
+                headers: {
+                    Accept: 'application/json',
+                },
                 onUploadProgress: (progressEvent) => {
                     const percentCompleted = Math.round(
-                        (progressEvent.loaded * 100) /
-                            (progressEvent.total || 1),
+                        (progressEvent.loaded * 100) / (progressEvent.total || 1),
                     );
                     setUploadProgress(percentCompleted);
                 },
             });
 
-            const { filename } = uploadResponse.data;
-            if (!filename)
-                throw new Error('Server tidak mengembalikan nama file.');
+            console.log('✅ Upload Response:', uploadResponse.data);
+
+            const { filename } = uploadResponse.data || {};
+            if (!filename) throw new Error('Server tidak mengembalikan nama file.');
+
             setUploadedFilename(filename);
 
+            // Show conversion complete before moving to preview
+            if (requiresConversion) {
+                setStep('previewing');
+            }
+
             const previewUrl = route('penjualan.preview', { filename });
-            const previewResponse = await axios.get(previewUrl);
+            const previewResponse = await axios.get(previewUrl, {
+                withCredentials: true,
+            });
+
             setPreviewData(previewResponse.data.preview);
         } catch (error: any) {
-            console.error('❌ Upload or Preview failed', error);
-            const errorMessage =
+            console.error('❌ Upload failed:', error);
+            const msg =
+                error.response?.data?.message ||
                 error.response?.data?.error ||
-                error.message ||
-                'Terjadi kesalahan yang tidak diketahui.';
-            setApiError(errorMessage);
+                error.message;
+            setApiError(msg || 'Gagal mengunggah file.');
             setStep('initial');
         } finally {
             setIsLoading(false);
@@ -220,7 +246,7 @@ export default function UploadPage({
             return;
         }
 
-        console.log('Validating File:', filenameToUse);
+        console.log('Validating File:', filenameToUse, 'with header row:', headerRow);
         setIsLoading(true);
         setApiError(null);
         setStep('validating');
@@ -228,7 +254,7 @@ export default function UploadPage({
         try {
             const response = await axios.post(validateUrl, {
                 filename: filenameToUse,
-                headerRow: headerRow,
+                headerRow: headerRow, // Send the selected header row
             });
             setValidationResult(response.data);
             setStep('validation_complete');
@@ -298,12 +324,11 @@ export default function UploadPage({
                                         id="document"
                                         type="file"
                                         accept=".xlsx,.xls,.csv"
-                                        onChange={(e) =>
-                                            setData(
-                                                'document',
-                                                e.target.files?.[0] ?? null,
-                                            )
-                                        }
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0] ?? null;
+                                            setData('document', file);
+                                            console.log('📂 File selected:', file?.name, file?.size);
+                                        }}
                                         disabled={isLoading}
                                     />
                                 </div>
@@ -323,11 +348,39 @@ export default function UploadPage({
                             </div>
                         )}
 
+                        {/* Step 1.5: Converting (only for xlsx/xls files) */}
+                        {step === 'converting' && isLoading && (
+                            <div className="space-y-4">
+                                <Alert
+                                    variant="default"
+                                    className="border-blue-500"
+                                >
+                                    <Sheet className="h-4 w-4" />
+                                    <AlertTitle>Mengonversi File</AlertTitle>
+                                    <AlertDescription>
+                                        File Excel sedang dikonversi ke format CSV untuk diproses...
+                                    </AlertDescription>
+                                </Alert>
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <p className="text-sm text-muted-foreground">
+                                            Mengunggah dan mengonversi file...
+                                        </p>
+                                    </div>
+                                    <Progress
+                                        value={uploadProgress}
+                                        className="w-full"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         {/* Step 2: Preview */}
                         {step === 'previewing' && isLoading && (
                             <div className="space-y-2">
                                 <p className="text-sm text-muted-foreground">
-                                    Mengunggah file...
+                                    {needsConversion ? 'Memuat pratinjau...' : 'Mengunggah file...'}
                                 </p>
                                 <Progress
                                     value={uploadProgress}
