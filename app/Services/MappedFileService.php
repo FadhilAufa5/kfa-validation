@@ -44,9 +44,18 @@ class MappedFileService
             throw new \Exception('No data found in uploaded file');
         }
 
-        $mapping = $config['mapping'];
-        $connectorColumn = $config['connector'][0];
+        $mapping = $config['mapping'] ?? [];
+        $connectorColumn = $config['connector'][0] ?? null;
         $sumColumn = $config['sum'][0] ?? null;
+
+        // Validate essential configuration
+        if (empty($mapping)) {
+            throw new \Exception('Mapping configuration is empty or not properly defined');
+        }
+
+        if (empty($connectorColumn)) {
+            throw new \Exception('Connector column is not defined in configuration');
+        }
 
         // Delete existing mappings for this file (if re-processing)
         MappedUploadedFile::where('filename', $filename)
@@ -58,16 +67,33 @@ class MappedFileService
         $rowIndex = $headerRow + 1; // Start counting from row after header
         $failedRows = [];
         $skippedRows = [];
+        $missingColumnWarnings = [];
 
         Log::info('Starting data mapping process', [
             'filename' => $filename,
             'document_type' => $documentType,
             'document_category' => $documentCategory,
-            'total_rows_to_process' => count($processedData['data'])
+            'total_rows_to_process' => count($processedData['data']),
+            'connector_column' => $connectorColumn,
+            'sum_column' => $sumColumn,
+            'mapped_columns' => array_keys($mapping)
         ]);
 
         foreach ($processedData['data'] as $row) {
             try {
+                // Safely encode raw data with error handling
+                try {
+                    $rawData = $this->encodeRawRow($row, $filename, $rowIndex);
+                } catch (\Exception $e) {
+                    Log::error("Failed to encode raw row data", [
+                        'file' => $filename,
+                        'row' => $rowIndex,
+                        'error' => $e->getMessage()
+                    ]);
+                    // Use a fallback empty JSON if encoding fails
+                    $rawData = json_encode([]);
+                }
+
                 // Extract mapped values
                 $mappedData = [
                     'filename' => $filename,
@@ -76,24 +102,77 @@ class MappedFileService
                     'header_row' => $headerRow,
                     'user_id' => $userId,
                     'row_index' => $rowIndex,
-                    'raw_data' => $this->encodeRawRow($row, $filename, $rowIndex),
+                    'raw_data' => $rawData,
                 ];
 
-                // Map configured columns
+                // Map configured columns with safe access
                 foreach ($mapping as $dbColumn => $fileColumn) {
-                    $value = $row[$fileColumn] ?? null;
+                    // Check if column exists in the row
+                    if (!array_key_exists($fileColumn, $row)) {
+                        // Log missing column warning (only once per column)
+                        $warningKey = "{$fileColumn}";
+                        if (!isset($missingColumnWarnings[$warningKey])) {
+                            Log::warning("Mapped column not found in file data", [
+                                'file' => $filename,
+                                'row' => $rowIndex,
+                                'db_column' => $dbColumn,
+                                'file_column' => $fileColumn,
+                                'available_columns' => array_keys($row)
+                            ]);
+                            $missingColumnWarnings[$warningKey] = true;
+                        }
+                        $value = null;
+                    } else {
+                        $value = $row[$fileColumn];
+                    }
                     
-                    // Handle date formatting
-                    if ($dbColumn === 'date' && $value) {
-                        $mappedData[$dbColumn] = $this->parseDate($value, $filename, $rowIndex);
+                    // Handle date formatting with null safety
+                    if ($dbColumn === 'date' && !empty($value)) {
+                        try {
+                            $mappedData[$dbColumn] = $this->parseDate($value, $filename, $rowIndex);
+                        } catch (\Exception $e) {
+                            Log::warning("Date parsing failed, setting to null", [
+                                'file' => $filename,
+                                'row' => $rowIndex,
+                                'value' => $value,
+                                'error' => $e->getMessage()
+                            ]);
+                            $mappedData[$dbColumn] = null;
+                        }
                     } else {
                         $mappedData[$dbColumn] = $value;
                     }
                 }
 
-                // Map connector and sum fields
-                $mappedData['connector'] = $row[$connectorColumn] ?? null;
-                $mappedData['sum_field'] = $sumColumn ? ($row[$sumColumn] ?? null) : null;
+                // Map connector field with safe access
+                if (!array_key_exists($connectorColumn, $row)) {
+                    Log::warning("Connector column not found in row data", [
+                        'file' => $filename,
+                        'row' => $rowIndex,
+                        'connector_column' => $connectorColumn,
+                        'available_columns' => array_keys($row)
+                    ]);
+                    $mappedData['connector'] = null;
+                } else {
+                    $mappedData['connector'] = $row[$connectorColumn];
+                }
+
+                // Map sum field with safe access
+                if (!empty($sumColumn)) {
+                    if (!array_key_exists($sumColumn, $row)) {
+                        Log::debug("Sum column not found in row data", [
+                            'file' => $filename,
+                            'row' => $rowIndex,
+                            'sum_column' => $sumColumn,
+                            'available_columns' => array_keys($row)
+                        ]);
+                        $mappedData['sum_field'] = null;
+                    } else {
+                        $mappedData['sum_field'] = $row[$sumColumn];
+                    }
+                } else {
+                    $mappedData['sum_field'] = null;
+                }
 
                 // Skip rows without connector value
                 if (empty($mappedData['connector'])) {
