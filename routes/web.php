@@ -60,6 +60,7 @@ Route::get('penjualan/{id}/matched-records', [PenjualanController::class, 'getMa
 Route::get('penjualan/{id}/matched-records/all', [PenjualanController::class, 'getAllMatchedGroups'])->name('penjualan.matched-records-all');
 Route::get('penjualan/{id}/document-comparison', [PenjualanController::class, 'getDocumentComparisonData'])->name('penjualan.document-comparison');
 Route::get('penjualan/history/data', [PenjualanController::class, 'getValidationHistory'])->name('penjualan.history.data');
+Route::post('penjualan/history/check-processing', [PenjualanController::class, 'checkProcessingStatus'])->name('penjualan.history.check-processing');
 
 /*
 |--------------------------------------------------------------------------
@@ -87,6 +88,7 @@ Route::get('pembelian/{id}/matched-records', [PembelianController::class, 'getMa
 Route::get('pembelian/{id}/matched-records/all', [PembelianController::class, 'getAllMatchedGroups'])->name('pembelian.matched-records-all');
 Route::get('pembelian/{id}/document-comparison', [PembelianController::class, 'getDocumentComparisonData'])->name('pembelian.document-comparison');
 Route::get('pembelian/history/data', [PembelianController::class, 'getValidationHistory'])->name('pembelian.history.data');
+Route::post('pembelian/history/check-processing', [PembelianController::class, 'checkProcessingStatus'])->name('pembelian.history.check-processing');
 
 /*
 |--------------------------------------------------------------------------

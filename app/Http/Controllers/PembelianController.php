@@ -435,6 +435,41 @@ class PembelianController extends Controller
         return response()->json($data);
     }
 
+    public function checkProcessingStatus(Request $request)
+    {
+        $processingIds = $request->input('ids', []);
+        
+        if (empty($processingIds)) {
+            return response()->json([]);
+        }
+
+        // Only query the specific processing jobs, not the entire table
+        $updates = \App\Models\Validation::whereIn('id', $processingIds)
+            ->where('document_type', 'pembelian')
+            ->select('id', 'status', 'score', 'matched_records', 'mismatched_records')
+            ->get()
+            ->map(function ($validation) {
+                // Determine display status based on validation status field
+                $displayStatus = 'Valid';
+                if ($validation->status === 'processing') {
+                    $displayStatus = 'Processing';
+                } elseif ($validation->status === 'failed') {
+                    $displayStatus = 'Failed';
+                } elseif ($validation->mismatched_records > 0) {
+                    $displayStatus = 'Invalid';
+                }
+
+                return [
+                    'id' => $validation->id,
+                    'status' => $displayStatus,
+                    'score' => number_format($validation->score, 2) . '%',
+                    'processing_status' => $validation->status,
+                ];
+            });
+
+        return response()->json($updates);
+    }
+
     public function getDocumentComparisonData($id, Request $request)
     {
         $validation = \App\Models\Validation::find($id);

@@ -139,20 +139,56 @@ export default function ValidationLogPage() {
         fetchLogs();
     }, [search, filterStatus, currentPage]);
 
-    // Auto-refresh for processing jobs
-    // useEffect(() => {
-    //     const hasProcessingJobs = logs.some(
-    //         (log) => log.status === 'Processing',
-    //     );
+    // Efficient polling for processing jobs only
+    useEffect(() => {
+        const processingIds = logs
+            .filter((log) => log.status === 'Processing')
+            .map((log) => log.id);
 
-    //     if (hasProcessingJobs) {
-    //         const interval = setInterval(() => {
-    //             fetchLogs();
-    //         }, 30000); // Refresh every 30 seconds
+        if (processingIds.length === 0) {
+            return; // No processing jobs, no need to poll
+        }
 
-    //         return () => clearInterval(interval);
-    //     }
-    // }, [logs]);
+        const interval = setInterval(async () => {
+            try {
+                // Only check status of processing jobs, not entire table
+                const response = await axios.post(
+                    '/pembelian/history/check-processing',
+                    { ids: processingIds },
+                );
+
+                const updates = response.data;
+
+                if (updates.length > 0) {
+                    // Update only the changed items in the logs state
+                    setLogs((prevLogs) =>
+                        prevLogs.map((log) => {
+                            const update = updates.find(
+                                (u: { id: number; status: string; score: string }) => u.id === log.id,
+                            );
+                            if (update && update.status !== log.status) {
+                                return { ...log, ...update };
+                            }
+                            return log;
+                        }),
+                    );
+
+                    // If any job completed, refresh the full list to get accurate counts
+                    const hasCompletedJobs = updates.some(
+                        (u: { status: string }) => u.status !== 'Processing',
+                    );
+                    if (hasCompletedJobs) {
+                        // Delay refresh slightly to ensure backend is fully updated
+                        setTimeout(() => fetchLogs(), 1000);
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking processing status:', error);
+            }
+        }, 10000); // Check every 10 seconds (more frequent since it's lightweight)
+
+        return () => clearInterval(interval);
+    }, [logs]);
 
     // Track completed jobs and show notifications
     useEffect(() => {
