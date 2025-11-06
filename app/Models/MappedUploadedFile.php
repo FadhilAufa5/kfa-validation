@@ -21,11 +21,9 @@ class MappedUploadedFile extends Model
         'connector',
         'sum_field',
         'row_index',
-        'raw_data',
     ];
 
     protected $casts = [
-        'raw_data' => 'array',
         'date' => 'date',
         'sum_field' => 'decimal:2',
         'header_row' => 'integer',

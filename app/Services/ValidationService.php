@@ -34,30 +34,37 @@ class ValidationService
         ]);
 
         $config = $this->getValidationConfig($documentType, $documentCategory);
-        $validationRecords = $this->loadValidationData($config);
         
-        // Load uploaded data from mapped_uploaded_files table instead of reading from storage
-        $mappedRecords = $this->loadMappedUploadedData($filename, $documentType, $documentCategory);
+        // Get total record count efficiently
+        $totalRecords = $this->getTotalRecordCount($filename, $documentType, $documentCategory);
         
-        if (empty($mappedRecords)) {
+        if ($totalRecords === 0) {
             throw new \Exception('No mapped data found for this file. Please ensure the file was properly mapped before validation.');
         }
 
-        Log::info('Loaded mapped uploaded data', [
+        Log::info('Found mapped records', [
             'filename' => $filename,
-            'record_count' => count($mappedRecords)
+            'total_records' => $totalRecords
         ]);
 
+        // Build validation map from validation data source
+        $validationRecords = $this->loadValidationData($config);
         $validationMap = $this->buildValidationMap($validationRecords, $config);
-        $uploadedMapByGroup = $this->buildUploadedMapFromMappedData($mappedRecords);
 
+        // Use database aggregation to get uploaded data grouped by connector
+        $uploadedMapByGroup = $this->buildUploadedMapFromDatabase($filename, $documentType, $documentCategory);
+
+        // Compare aggregated data
         [$invalidGroups, $matchedGroups] = $this->compareData($uploadedMapByGroup, $validationMap);
-        [$invalidRows, $matchedRows, $mismatchedRecordCount] = $this->categorizeRowsFromMappedData(
-            $mappedRecords,
+        
+        // Categorize rows using database queries instead of loading all into memory
+        [$invalidRows, $matchedRows, $mismatchedRecordCount] = $this->categorizeRowsFromDatabase(
+            $filename,
+            $documentType,
+            $documentCategory,
             $invalidGroups,
             $validationMap,
-            $uploadedMapByGroup,
-            $config
+            $uploadedMapByGroup
         );
 
         $executionTime = microtime(true) - $startTime;
@@ -73,7 +80,7 @@ class ValidationService
             $filename,
             $documentType,
             $documentCategory,
-            count($mappedRecords),
+            $totalRecords,
             $mismatchedRecordCount,
             $invalidGroups,
             $invalidRows,
@@ -195,59 +202,50 @@ class ValidationService
         return $map;
     }
 
-    private function buildUploadedMap(array $data, array $config): array
-    {
-        $uploadedConnector = $config['connector'][0];
-        $uploadedSum = $config['sum'][0];
-        $map = [];
-
-        foreach ($data as $row) {
-            $key = trim($row[$uploadedConnector] ?? '');
-            if ($key === '') continue;
-
-            $value = $this->cleanAndParseFloat($row[$uploadedSum] ?? 0);
-            $map[$key] = ($map[$key] ?? 0) + $value;
-        }
-
-        return $map;
+    /**
+     * Get total record count efficiently without loading all data
+     */
+    private function getTotalRecordCount(
+        string $filename,
+        string $documentType,
+        string $documentCategory
+    ): int {
+        return MappedUploadedFile::byFilename($filename)
+            ->byDocumentType($documentType)
+            ->byDocumentCategory($documentCategory)
+            ->count();
     }
 
     /**
-     * Load mapped uploaded data from database
+     * Build uploaded data map using database aggregation (optimized for large datasets)
+     * Groups by connector and sums the sum_field directly in database
      */
-    private function loadMappedUploadedData(
+    private function buildUploadedMapFromDatabase(
         string $filename,
         string $documentType,
         string $documentCategory
     ): array {
-        $records = MappedUploadedFile::byFilename($filename)
-            ->byDocumentType($documentType)
-            ->byDocumentCategory($documentCategory)
-            ->orderBy('row_index')
+        $results = DB::table('mapped_uploaded_files')
+            ->select('connector', DB::raw('SUM(CAST(sum_field AS REAL)) as total'))
+            ->where('filename', $filename)
+            ->where('document_type', $documentType)
+            ->where('document_category', $documentCategory)
+            ->whereNotNull('connector')
+            ->where('connector', '!=', '')
+            ->groupBy('connector')
             ->get();
 
-        return $records->toArray();
-    }
-
-    /**
-     * Build uploaded data map from MappedUploadedFile records
-     * Groups by connector and sums the sum_field
-     */
-    private function buildUploadedMapFromMappedData(array $mappedRecords): array
-    {
         $map = [];
-
-        foreach ($mappedRecords as $record) {
-            $key = trim($record['connector'] ?? '');
-            if ($key === '') continue;
-
-            $value = $this->cleanAndParseFloat($record['sum_field'] ?? 0);
-            $map[$key] = ($map[$key] ?? 0) + $value;
+        foreach ($results as $result) {
+            $key = trim($result->connector);
+            if ($key !== '') {
+                $map[$key] = (float) $result->total;
+            }
         }
 
-        Log::info('Built uploaded map from mapped data', [
+        Log::info('Built uploaded map from database aggregation', [
             'unique_keys' => count($map),
-            'total_records_processed' => count($mappedRecords)
+            'aggregated_groups' => $results->count()
         ]);
 
         return $map;
@@ -313,132 +311,97 @@ class ValidationService
         return [$invalidGroups, $matchedGroups];
     }
 
-    private function categorizeRows(
-        array $data,
-        array $invalidGroups,
-        array $validationMap,
-        array $uploadedMapByGroup,
-        array $config
-    ): array {
-        $invalidRows = [];
-        $matchedRows = [];
-        $mismatchedRecordCount = 0;
-
-        $uploadedConnector = $config['connector'][0];
-        $uploadedSum = $config['sum'][0];
-
-        foreach ($data as $index => $row) {
-            $key = trim($row[$uploadedConnector] ?? '');
-            if ($key === '') continue;
-
-            $validationValue = $validationMap[$key] ?? null;
-            $uploadedValue = $this->cleanAndParseFloat($row[$uploadedSum] ?? 0);
-            $groupUploadedValue = $uploadedMapByGroup[$key] ?? 0;
-
-            $isMatched = false;
-            $isIgnoredZero = false;
-
-            if ($validationValue === null) {
-                if ($groupUploadedValue == 0) {
-                    $isIgnoredZero = true;
-                    $matchedRows[] = [
-                        'row_index' => $index,
-                        'key_value' => $key,
-                        'validation_source_total' => $validationValue,
-                        'uploaded_total' => $uploadedValue,
-                    ];
-                } else {
-                    $isMatched = false;
-                }
-            } else {
-                $diff = abs($groupUploadedValue - $validationValue);
-                $isMatched = $diff <= self::TOLERANCE;
-            }
-
-            if (!$isMatched && !$isIgnoredZero && isset($invalidGroups[$key])) {
-                $error = $invalidGroups[$key]['error'];
-                $invalidRows[] = [
-                    'row_index' => $index,
-                    'key_value' => $key,
-                    'error' => $error
-                ];
-                $mismatchedRecordCount++;
-            } else if ($isMatched && !$isIgnoredZero) {
-                $matchedRows[] = [
-                    'row_index' => $index,
-                    'key_value' => $key,
-                    'validation_source_total' => $validationValue,
-                    'uploaded_total' => $uploadedValue,
-                ];
-            }
-        }
-
-        return [$invalidRows, $matchedRows, $mismatchedRecordCount];
-    }
-
     /**
-     * Categorize rows from mapped data (reads from mapped_uploaded_files table)
+     * Categorize rows using database queries (optimized for large datasets)
+     * Uses database filtering instead of loading all records into PHP memory
      */
-    private function categorizeRowsFromMappedData(
-        array $mappedRecords,
+    private function categorizeRowsFromDatabase(
+        string $filename,
+        string $documentType,
+        string $documentCategory,
         array $invalidGroups,
         array $validationMap,
-        array $uploadedMapByGroup,
-        array $config
+        array $uploadedMapByGroup
     ): array {
         $invalidRows = [];
         $matchedRows = [];
         $mismatchedRecordCount = 0;
 
-        foreach ($mappedRecords as $record) {
-            $key = trim($record['connector'] ?? '');
-            if ($key === '') continue;
+        // Get invalid row keys
+        $invalidKeys = array_keys($invalidGroups);
+        
+        // Process invalid rows in batches if there are any
+        if (!empty($invalidKeys)) {
+            foreach (array_chunk($invalidKeys, 500) as $keyChunk) {
+                $records = DB::table('mapped_uploaded_files')
+                    ->select('row_index', 'connector', 'sum_field')
+                    ->where('filename', $filename)
+                    ->where('document_type', $documentType)
+                    ->where('document_category', $documentCategory)
+                    ->whereIn('connector', $keyChunk)
+                    ->get();
+
+                foreach ($records as $record) {
+                    $key = trim($record->connector);
+                    if (isset($invalidGroups[$key])) {
+                        $invalidRows[] = [
+                            'row_index' => $record->row_index,
+                            'key_value' => $key,
+                            'error' => $invalidGroups[$key]['error']
+                        ];
+                        $mismatchedRecordCount++;
+                    }
+                }
+            }
+        }
+
+        // Get matched keys (excluding invalid ones)
+        $matchedKeys = [];
+        foreach ($uploadedMapByGroup as $key => $uploadedValue) {
+            if (isset($invalidGroups[$key])) {
+                continue; // Skip invalid keys
+            }
 
             $validationValue = $validationMap[$key] ?? null;
-            $uploadedValue = $this->cleanAndParseFloat($record['sum_field'] ?? 0);
-            $groupUploadedValue = $uploadedMapByGroup[$key] ?? 0;
-            $rowIndex = $record['row_index'] ?? 0;
+            
+            // Check if it's a matched key
+            if ($validationValue === null && $uploadedValue == 0) {
+                $matchedKeys[] = $key; // Retur doesn't record
+            } else if ($validationValue !== null) {
+                $diff = abs($uploadedValue - $validationValue);
+                if ($diff <= self::TOLERANCE) {
+                    $matchedKeys[] = $key;
+                }
+            }
+        }
 
-            $isMatched = false;
-            $isIgnoredZero = false;
+        // Process matched rows in batches
+        if (!empty($matchedKeys)) {
+            foreach (array_chunk($matchedKeys, 500) as $keyChunk) {
+                $records = DB::table('mapped_uploaded_files')
+                    ->select('row_index', 'connector', 'sum_field')
+                    ->where('filename', $filename)
+                    ->where('document_type', $documentType)
+                    ->where('document_category', $documentCategory)
+                    ->whereIn('connector', $keyChunk)
+                    ->get();
 
-            if ($validationValue === null) {
-                if ($groupUploadedValue == 0) {
-                    $isIgnoredZero = true;
+                foreach ($records as $record) {
+                    $key = trim($record->connector);
+                    $validationValue = $validationMap[$key] ?? null;
+                    $uploadedValue = (float) $record->sum_field;
+
                     $matchedRows[] = [
-                        'row_index' => $rowIndex,
+                        'row_index' => $record->row_index,
                         'key_value' => $key,
                         'validation_source_total' => $validationValue,
                         'uploaded_total' => $uploadedValue,
                     ];
-                } else {
-                    $isMatched = false;
                 }
-            } else {
-                $diff = abs($groupUploadedValue - $validationValue);
-                $isMatched = $diff <= self::TOLERANCE;
-            }
-
-            if (!$isMatched && !$isIgnoredZero && isset($invalidGroups[$key])) {
-                $error = $invalidGroups[$key]['error'];
-                $invalidRows[] = [
-                    'row_index' => $rowIndex,
-                    'key_value' => $key,
-                    'error' => $error
-                ];
-                $mismatchedRecordCount++;
-            } else if ($isMatched && !$isIgnoredZero) {
-                $matchedRows[] = [
-                    'row_index' => $rowIndex,
-                    'key_value' => $key,
-                    'validation_source_total' => $validationValue,
-                    'uploaded_total' => $uploadedValue,
-                ];
             }
         }
 
-        Log::info('Categorized rows from mapped data', [
-            'total_records' => count($mappedRecords),
+        Log::info('Categorized rows from database', [
             'invalid_rows' => count($invalidRows),
             'matched_rows' => count($matchedRows),
             'mismatched_count' => $mismatchedRecordCount
@@ -529,46 +492,86 @@ class ValidationService
                 ]);
             }
 
-            // Save invalid groups to separate table
-            foreach ($invalidGroups as $key => $group) {
-                $validation->invalidGroups()->create([
-                    'key_value' => $key,
-                    'discrepancy_category' => $group['discrepancy_category'],
-                    'error' => $group['error'],
-                    'uploaded_total' => $group['uploaded_total'],
-                    'source_total' => $group['source_total'],
-                    'discrepancy_value' => $group['discrepancy_value'],
-                ]);
+            // Batch insert invalid groups (chunked to avoid SQLite 999 variable limit)
+            if (!empty($invalidGroups)) {
+                $invalidGroupsData = [];
+                foreach ($invalidGroups as $key => $group) {
+                    $invalidGroupsData[] = [
+                        'validation_id' => $validation->id,
+                        'key_value' => $key,
+                        'discrepancy_category' => $group['discrepancy_category'],
+                        'error' => $group['error'],
+                        'uploaded_total' => $group['uploaded_total'],
+                        'source_total' => $group['source_total'],
+                        'discrepancy_value' => $group['discrepancy_value'],
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+                // 9 columns per row, so chunk at 100 rows (900 variables) to stay under 999 limit
+                foreach (array_chunk($invalidGroupsData, 100) as $chunk) {
+                    $validation->invalidGroups()->insert($chunk);
+                }
             }
 
-            // Save invalid rows to separate table
-            foreach ($invalidRows as $row) {
-                $validation->invalidRows()->create([
-                    'row_index' => $row['row_index'],
-                    'key_value' => $row['key_value'],
-                    'error' => $row['error'],
-                ]);
+            // Batch insert invalid rows (chunked to avoid SQLite 999 variable limit)
+            if (!empty($invalidRows)) {
+                $invalidRowsData = [];
+                foreach ($invalidRows as $row) {
+                    $invalidRowsData[] = [
+                        'validation_id' => $validation->id,
+                        'row_index' => $row['row_index'],
+                        'key_value' => $row['key_value'],
+                        'error' => $row['error'],
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+                // 6 columns per row, so chunk at 150 rows (900 variables) to stay under 999 limit
+                foreach (array_chunk($invalidRowsData, 150) as $chunk) {
+                    $validation->invalidRows()->insert($chunk);
+                }
             }
 
-            // Save matched groups to separate table
-            foreach ($matchedGroups as $key => $group) {
-                $validation->matchedGroups()->create([
-                    'key_value' => $key,
-                    'uploaded_total' => $group['uploaded_total'],
-                    'source_total' => $group['source_total'],
-                    'difference' => $group['difference'],
-                    'note' => $group['note'],
-                ]);
+            // Batch insert matched groups (chunked to avoid SQLite 999 variable limit)
+            if (!empty($matchedGroups)) {
+                $matchedGroupsData = [];
+                foreach ($matchedGroups as $key => $group) {
+                    $matchedGroupsData[] = [
+                        'validation_id' => $validation->id,
+                        'key_value' => $key,
+                        'uploaded_total' => $group['uploaded_total'],
+                        'source_total' => $group['source_total'],
+                        'difference' => $group['difference'],
+                        'note' => $group['note'],
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+                // 8 columns per row, so chunk at 120 rows (960 variables) to stay under 999 limit
+                foreach (array_chunk($matchedGroupsData, 120) as $chunk) {
+                    $validation->matchedGroups()->insert($chunk);
+                }
             }
 
-            // Save matched rows to separate table
-            foreach ($matchedRows as $row) {
-                $validation->matchedRows()->create([
-                    'row_index' => $row['row_index'],
-                    'key_value' => $row['key_value'],
-                    'validation_source_total' => $row['validation_source_total'],
-                    'uploaded_total' => $row['uploaded_total'],
-                ]);
+            // Batch insert matched rows (chunked to avoid SQLite 999 variable limit)
+            if (!empty($matchedRows)) {
+                $matchedRowsData = [];
+                foreach ($matchedRows as $row) {
+                    $matchedRowsData[] = [
+                        'validation_id' => $validation->id,
+                        'row_index' => $row['row_index'],
+                        'key_value' => $row['key_value'],
+                        'validation_source_total' => $row['validation_source_total'],
+                        'uploaded_total' => $row['uploaded_total'],
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                }
+                // 7 columns per row, so chunk at 140 rows (980 variables) to stay under 999 limit
+                foreach (array_chunk($matchedRowsData, 140) as $chunk) {
+                    $validation->matchedRows()->insert($chunk);
+                }
             }
 
             return $validation;

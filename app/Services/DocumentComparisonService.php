@@ -49,80 +49,58 @@ class DocumentComparisonService
     {
         $connectorColumn = $config['connector'][0];
         $sumField = $config['sum'][0] ?? null;
+        $mapping = $config['mapping'] ?? [];
         
-        // Try to load from mapped_uploaded_files table first
+        // Load from mapped_uploaded_files table
         $mappedRecords = MappedUploadedFile::where('filename', $filename)
             ->where('connector', $key)
             ->orderBy('row_index')
             ->get();
 
         if ($mappedRecords->isEmpty()) {
-            // Fallback: Try to read from storage if file still exists
-            $path = "uploads/{$filename}";
-            
-            if (!Storage::exists($path)) {
-                throw new \Exception('File data not found. The file may have been processed and removed from storage.');
-            }
-
-            Log::warning('Falling back to reading from storage file', [
-                'filename' => $filename,
-                'key' => $key
-            ]);
-            
-            // Use processFileWithHeader to properly read file with header offset
-            $processedData = $this->fileProcessingService->processFileWithHeader($filename, $headerRow);
-            
-            // Filter data by key
-            $filteredData = array_filter($processedData['data'], function ($row) use ($connectorColumn, $key) {
-                $rowKey = trim((string) ($row[$connectorColumn] ?? ''));
-                $searchKey = trim((string) $key);
-                return strcasecmp($rowKey, $searchKey) === 0;
-            });
-
-            // Get headers from the processed data
-            $headers = !empty($processedData['data']) ? array_keys($processedData['data'][0]) : [];
-
-            Log::info('Uploaded Data Response (from storage)', [
-                'connector_column' => $connectorColumn,
-                'key' => $key,
-                'header_row' => $headerRow,
-                'total_rows' => count($processedData['data']),
-                'filtered_count' => count($filteredData)
-            ]);
-
-            // Return data in the same format as before: [headers, ...rows]
-            return [
-                'filename' => $filename,
-                'connector_column' => $connectorColumn,
-                'sum_field' => $sumField,
-                'key' => $key,
-                'data' => [
-                    $headers,
-                    ...array_values($filteredData)
-                ],
-            ];
+            throw new \Exception('File data not found. The file may have been processed and removed from storage.');
         }
 
-        // Convert mapped records to the expected format
+        // Build headers and rows from mapped columns configuration
         $headers = [];
         $rows = [];
         
+        // Get column labels from config mapping (the file column names)
+        foreach ($mapping as $dbColumn => $fileColumn) {
+            $headers[] = $fileColumn;
+        }
+        
+        // Add connector and sum field columns if they're not already in mapping
+        if (!in_array($connectorColumn, $headers)) {
+            $headers[] = $connectorColumn;
+        }
+        if ($sumField && !in_array($sumField, $headers)) {
+            $headers[] = $sumField;
+        }
+        
+        // Build rows from mapped records
         foreach ($mappedRecords as $record) {
-            $rawData = $record->raw_data;
+            $row = [];
             
-            if (empty($headers) && is_array($rawData)) {
-                $headers = array_keys($rawData);
+            // Map database columns back to file column names
+            foreach ($mapping as $dbColumn => $fileColumn) {
+                $row[$fileColumn] = $record->{$dbColumn};
             }
             
-            if (is_array($rawData)) {
-                $rows[] = $rawData;
+            // Add connector and sum field values
+            $row[$connectorColumn] = $record->connector;
+            if ($sumField) {
+                $row[$sumField] = $record->sum_field;
             }
+            
+            $rows[] = $row;
         }
 
         Log::info('Uploaded Data Response (from mapped_uploaded_files)', [
             'connector_column' => $connectorColumn,
             'key' => $key,
-            'filtered_count' => count($rows)
+            'filtered_count' => count($rows),
+            'headers' => $headers
         ]);
 
         return [

@@ -119,7 +119,9 @@ export default function ValidationLogPage() {
         from: 0,
         to: 0,
     });
-    const [previousProcessingIds, setPreviousProcessingIds] = useState<number[]>([]);
+    const [previousProcessingIds, setPreviousProcessingIds] = useState<
+        number[]
+    >([]);
 
     // Request notification permission on mount
     useEffect(() => {
@@ -138,38 +140,40 @@ export default function ValidationLogPage() {
     }, [search, filterStatus, currentPage]);
 
     // Auto-refresh for processing jobs
-    useEffect(() => {
-        const hasProcessingJobs = logs.some(log => log.status === 'Processing');
-        
-        if (hasProcessingJobs) {
-            const interval = setInterval(() => {
-                fetchLogs();
-            }, 15000); // Refresh every 15 seconds
-            
-            return () => clearInterval(interval);
-        }
-    }, [logs]);
+    // useEffect(() => {
+    //     const hasProcessingJobs = logs.some(
+    //         (log) => log.status === 'Processing',
+    //     );
+
+    //     if (hasProcessingJobs) {
+    //         const interval = setInterval(() => {
+    //             fetchLogs();
+    //         }, 30000); // Refresh every 30 seconds
+
+    //         return () => clearInterval(interval);
+    //     }
+    // }, [logs]);
 
     // Track completed jobs and show notifications
     useEffect(() => {
         const currentProcessingIds = logs
-            .filter(log => log.status === 'Processing')
-            .map(log => log.id);
-        
+            .filter((log) => log.status === 'Processing')
+            .map((log) => log.id);
+
         // Find jobs that were processing but are now completed
         const completedIds = previousProcessingIds.filter(
-            id => !currentProcessingIds.includes(id)
+            (id) => !currentProcessingIds.includes(id),
         );
-        
+
         if (completedIds.length > 0 && previousProcessingIds.length > 0) {
-            completedIds.forEach(id => {
-                const completedLog = logs.find(log => log.id === id);
+            completedIds.forEach((id) => {
+                const completedLog = logs.find((log) => log.id === id);
                 if (completedLog) {
                     showNotification(completedLog);
                 }
             });
         }
-        
+
         setPreviousProcessingIds(currentProcessingIds);
     }, [logs]);
 
@@ -177,15 +181,20 @@ export default function ValidationLogPage() {
         if ('Notification' in window && Notification.permission === 'granted') {
             const title = 'Validation Complete';
             const body = `${log.fileName} - ${log.status} (Score: ${log.score})`;
-            const icon = log.status === 'Valid' ? '✅' : log.status === 'Invalid' ? '❌' : '⚠️';
-            
+            const icon =
+                log.status === 'Valid'
+                    ? '✅'
+                    : log.status === 'Invalid'
+                      ? '❌'
+                      : '⚠️';
+
             const notification = new Notification(title, {
                 body: body,
                 icon: '/favicon.ico',
                 badge: '/favicon.ico',
                 tag: `validation-${log.id}`,
             });
-            
+
             notification.onclick = () => {
                 window.focus();
                 router.visit(`/pembelian/${log.id}`);
@@ -281,56 +290,60 @@ export default function ValidationLogPage() {
                     </div>
 
                     <div className="flex flex-wrap justify-center gap-2">
-                        {(['All', 'Valid', 'Invalid', 'Processing', 'Failed'] as const).map(
-                            (status) => {
-                                const isActive = filterStatus === status;
-                                const colorClass = (() => {
-                                    if (status === 'All')
-                                        return isActive
-                                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                                            : 'border-gray-300 text-gray-700 dark:text-gray-200 dark:border-gray-700';
-                                    if (status === 'Valid')
-                                        return isActive
-                                            ? 'bg-green-600 hover:bg-green-700 text-white'
-                                            : 'border-green-300 text-green-700 dark:text-green-400 dark:border-green-700';
-                                    if (status === 'Invalid')
-                                        return isActive
-                                            ? 'bg-red-600 hover:bg-red-700 text-white'
-                                            : 'border-red-300 text-red-700 dark:text-red-400 dark:border-red-700';
-                                    if (status === 'Processing')
-                                        return isActive
-                                            ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                                            : 'border-blue-300 text-blue-700 dark:text-blue-400 dark:border-blue-700';
-                                    if (status === 'Failed')
-                                        return isActive
-                                            ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                                            : 'border-orange-300 text-orange-700 dark:text-orange-400 dark:border-orange-700';
-                                    return '';
-                                })();
+                        {(
+                            [
+                                'All',
+                                'Valid',
+                                'Invalid',
+                                'Processing',
+                                'Failed',
+                            ] as const
+                        ).map((status) => {
+                            const isActive = filterStatus === status;
+                            const colorClass = (() => {
+                                if (status === 'All')
+                                    return isActive
+                                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                        : 'border-gray-300 text-gray-700 dark:text-gray-200 dark:border-gray-700';
+                                if (status === 'Valid')
+                                    return isActive
+                                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                                        : 'border-green-300 text-green-700 dark:text-green-400 dark:border-green-700';
+                                if (status === 'Invalid')
+                                    return isActive
+                                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                                        : 'border-red-300 text-red-700 dark:text-red-400 dark:border-red-700';
+                                if (status === 'Processing')
+                                    return isActive
+                                        ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                                        : 'border-blue-300 text-blue-700 dark:text-blue-400 dark:border-blue-700';
+                                if (status === 'Failed')
+                                    return isActive
+                                        ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                                        : 'border-orange-300 text-orange-700 dark:text-orange-400 dark:border-orange-700';
+                                return '';
+                            })();
 
-                                return (
-                                    <Button
-                                        key={status}
-                                        variant={
-                                            isActive ? 'default' : 'outline'
-                                        }
-                                        className={`flex items-center gap-2 text-sm transition-colors duration-200 ${colorClass}`}
-                                        onClick={() => setFilterStatus(status)}
+                            return (
+                                <Button
+                                    key={status}
+                                    variant={isActive ? 'default' : 'outline'}
+                                    className={`flex items-center gap-2 text-sm transition-colors duration-200 ${colorClass}`}
+                                    onClick={() => setFilterStatus(status)}
+                                >
+                                    {status}
+                                    <span
+                                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                            isActive
+                                                ? 'bg-white/20 text-white'
+                                                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                        }`}
                                     >
-                                        {status}
-                                        <span
-                                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                                isActive
-                                                    ? 'bg-white/20 text-white'
-                                                    : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                                            }`}
-                                        >
-                                            {countByStatus[status]}
-                                        </span>
-                                    </Button>
-                                );
-                            },
-                        )}
+                                        {countByStatus[status]}
+                                    </span>
+                                </Button>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -396,7 +409,8 @@ export default function ValidationLogPage() {
                                                         item.status,
                                                     )}`}
                                                 >
-                                                    {item.status === 'Processing' && (
+                                                    {item.status ===
+                                                        'Processing' && (
                                                         <Loader2 className="h-3 w-3 animate-spin" />
                                                     )}
                                                     {item.status}
@@ -414,10 +428,16 @@ export default function ValidationLogPage() {
                                                             `/pembelian/${item.id}`,
                                                         )
                                                     }
-                                                    disabled={item.status === 'Processing'}
+                                                    disabled={
+                                                        item.status ===
+                                                        'Processing'
+                                                    }
                                                 >
                                                     <Eye className="mr-1 h-4 w-4" />{' '}
-                                                    {item.status === 'Processing' ? 'Processing...' : 'Detail'}
+                                                    {item.status ===
+                                                    'Processing'
+                                                        ? 'Processing...'
+                                                        : 'Detail'}
                                                 </Button>
                                             </TableCell>
                                         </TableRow>

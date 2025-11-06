@@ -81,19 +81,6 @@ class MappedFileService
 
         foreach ($processedData['data'] as $row) {
             try {
-                // Safely encode raw data with error handling
-                try {
-                    $rawData = $this->encodeRawRow($row, $filename, $rowIndex);
-                } catch (\Exception $e) {
-                    Log::error("Failed to encode raw row data", [
-                        'file' => $filename,
-                        'row' => $rowIndex,
-                        'error' => $e->getMessage()
-                    ]);
-                    // Use a fallback empty JSON if encoding fails
-                    $rawData = json_encode([]);
-                }
-
                 // Extract mapped values
                 $mappedData = [
                     'filename' => $filename,
@@ -102,23 +89,15 @@ class MappedFileService
                     'header_row' => $headerRow,
                     'user_id' => $userId,
                     'row_index' => $rowIndex,
-                    'raw_data' => $rawData,
                 ];
 
                 // Map configured columns with safe access
                 foreach ($mapping as $dbColumn => $fileColumn) {
                     // Check if column exists in the row
                     if (!array_key_exists($fileColumn, $row)) {
-                        // Log missing column warning (only once per column)
+                        // Track missing column warning (only once per column)
                         $warningKey = "{$fileColumn}";
                         if (!isset($missingColumnWarnings[$warningKey])) {
-                            Log::warning("Mapped column not found in file data", [
-                                'file' => $filename,
-                                'row' => $rowIndex,
-                                'db_column' => $dbColumn,
-                                'file_column' => $fileColumn,
-                                'available_columns' => array_keys($row)
-                            ]);
                             $missingColumnWarnings[$warningKey] = true;
                         }
                         $value = null;
@@ -131,12 +110,6 @@ class MappedFileService
                         try {
                             $mappedData[$dbColumn] = $this->parseDate($value, $filename, $rowIndex);
                         } catch (\Exception $e) {
-                            Log::warning("Date parsing failed, setting to null", [
-                                'file' => $filename,
-                                'row' => $rowIndex,
-                                'value' => $value,
-                                'error' => $e->getMessage()
-                            ]);
                             $mappedData[$dbColumn] = null;
                         }
                     } else {
@@ -146,12 +119,6 @@ class MappedFileService
 
                 // Map connector field with safe access
                 if (!array_key_exists($connectorColumn, $row)) {
-                    Log::warning("Connector column not found in row data", [
-                        'file' => $filename,
-                        'row' => $rowIndex,
-                        'connector_column' => $connectorColumn,
-                        'available_columns' => array_keys($row)
-                    ]);
                     $mappedData['connector'] = null;
                 } else {
                     $mappedData['connector'] = $row[$connectorColumn];
@@ -160,12 +127,6 @@ class MappedFileService
                 // Map sum field with safe access
                 if (!empty($sumColumn)) {
                     if (!array_key_exists($sumColumn, $row)) {
-                        Log::debug("Sum column not found in row data", [
-                            'file' => $filename,
-                            'row' => $rowIndex,
-                            'sum_column' => $sumColumn,
-                            'available_columns' => array_keys($row)
-                        ]);
                         $mappedData['sum_field'] = null;
                     } else {
                         $mappedData['sum_field'] = $row[$sumColumn];
@@ -176,11 +137,6 @@ class MappedFileService
 
                 // Skip rows without connector value
                 if (empty($mappedData['connector'])) {
-                    Log::warning("Skipping row without connector value", [
-                        'file' => $filename,
-                        'row' => $rowIndex,
-                        'reason' => 'Empty connector value'
-                    ]);
                     $skippedRows[] = [
                         'row' => $rowIndex,
                         'reason' => 'Empty connector value'
@@ -190,14 +146,6 @@ class MappedFileService
                 }
 
                 $mappedRecords[] = $mappedData;
-                
-                // Log successful mapping for this row
-                Log::debug("Row mapped successfully", [
-                    'file' => $filename,
-                    'row' => $rowIndex,
-                    'connector' => $mappedData['connector'],
-                    'sum_field' => $mappedData['sum_field']
-                ]);
                 
             } catch (\Exception $e) {
                 Log::error("Failed to map row data", [
@@ -236,15 +184,8 @@ class MappedFileService
                     
                     if ($inserted) {
                         $insertedCount += count($chunk);
-                        Log::debug('Chunk inserted successfully', [
-                            'filename' => $filename,
-                            'chunk' => $chunkIndex + 1,
-                            'total_chunks' => $totalChunks,
-                            'records_in_chunk' => count($chunk),
-                            'total_inserted_so_far' => $insertedCount
-                        ]);
                     } else {
-                        Log::error('❌ Failed to insert chunk', [
+                        Log::error('Failed to insert chunk', [
                             'filename' => $filename,
                             'chunk' => $chunkIndex + 1,
                             'records_in_chunk' => count($chunk)
@@ -253,44 +194,22 @@ class MappedFileService
                     }
                 }
                 
-                Log::info('✅ Data inserted successfully into mapped_uploaded_files table', [
+                Log::info('Data mapping completed successfully', [
                     'filename' => $filename,
                     'document_type' => $documentType,
                     'document_category' => $documentCategory,
-                    'header_row' => $headerRow,
                     'total_rows_in_file' => count($processedData['data']),
-                    'successfully_inserted' => $insertedCount,
+                    'successfully_mapped' => $insertedCount,
                     'skipped_rows' => count($skippedRows),
                     'failed_rows' => count($failedRows),
-                    'chunks_processed' => $totalChunks,
-                    'user_id' => $userId
+                    'missing_columns' => count($missingColumnWarnings) > 0 ? array_keys($missingColumnWarnings) : null
                 ]);
-
-                // Log individual stats if there were issues
-                if (!empty($skippedRows)) {
-                    Log::warning('Some rows were skipped during mapping', [
-                        'filename' => $filename,
-                        'skipped_count' => count($skippedRows),
-                        'skipped_details' => $skippedRows
-                    ]);
-                }
-
-                if (!empty($failedRows)) {
-                    Log::error('Some rows failed to map', [
-                        'filename' => $filename,
-                        'failed_count' => count($failedRows),
-                        'failed_details' => $failedRows
-                    ]);
-                }
                 
             } catch (\Exception $e) {
-                Log::error('❌ Exception occurred during data insertion', [
+                Log::error('Failed to insert mapped data', [
                     'filename' => $filename,
-                    'document_type' => $documentType,
-                    'document_category' => $documentCategory,
                     'records_attempted' => count($mappedRecords),
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
+                    'error' => $e->getMessage()
                 ]);
                 throw new \Exception('Failed to insert mapped data into database: ' . $e->getMessage());
             }
@@ -457,23 +376,8 @@ class MappedFileService
                 
                 try {
                     $date = \Carbon\Carbon::create($currentYear, $monthNumber, 1);
-                    
-                    Log::info("Converted numeric month to date", [
-                        'file' => $filename,
-                        'row' => $rowIndex,
-                        'input' => $value,
-                        'month_number' => $monthNumber,
-                        'output' => $date->format('Y-m-d')
-                    ]);
-                    
                     return $date->format('Y-m-d');
                 } catch (\Exception $e) {
-                    Log::warning("Failed to create date from numeric month", [
-                        'file' => $filename,
-                        'row' => $rowIndex,
-                        'value' => $value,
-                        'error' => $e->getMessage()
-                    ]);
                     return null;
                 }
             }
@@ -505,22 +409,8 @@ class MappedFileService
             // Create date as first day of the month
             try {
                 $date = \Carbon\Carbon::create($currentYear, $month, 1);
-                
-                Log::info("Converted month name to date", [
-                    'file' => $filename,
-                    'row' => $rowIndex,
-                    'input' => $value,
-                    'output' => $date->format('Y-m-d')
-                ]);
-                
                 return $date->format('Y-m-d');
             } catch (\Exception $e) {
-                Log::warning("Failed to create date from month", [
-                    'file' => $filename,
-                    'row' => $rowIndex,
-                    'value' => $value,
-                    'error' => $e->getMessage()
-                ]);
                 return null;
             }
         }
@@ -530,12 +420,6 @@ class MappedFileService
             $date = \Carbon\Carbon::parse($value);
             return $date->format('Y-m-d');
         } catch (\Exception $e) {
-            Log::warning("Failed to parse date", [
-                'file' => $filename,
-                'row' => $rowIndex,
-                'value' => $value,
-                'error' => $e->getMessage()
-            ]);
             return null;
         }
     }
@@ -551,46 +435,10 @@ class MappedFileService
         $path = "uploads/{$filename}";
         
         if (Storage::exists($path)) {
-            $deleted = Storage::delete($path);
-            
-            if ($deleted) {
-                Log::info("Deleted uploaded file after mapping", [
-                    'filename' => $filename,
-                    'path' => $path
-                ]);
-            } else {
-                Log::warning("Failed to delete uploaded file", [
-                    'filename' => $filename,
-                    'path' => $path
-                ]);
-            }
-            
-            return $deleted;
+            return Storage::delete($path);
         }
-        
-        Log::warning("Uploaded file not found for deletion", [
-            'filename' => $filename,
-            'path' => $path
-        ]);
         
         return false;
     }
 
-    private function encodeRawRow(array $row, string $filename, int $rowIndex): string
-    {
-        $encoded = json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-        if ($encoded === false) {
-            $error = json_last_error_msg();
-            Log::error('Failed to encode raw row data', [
-                'file' => $filename,
-                'row' => $rowIndex,
-                'error' => $error,
-            ]);
-
-            throw new \RuntimeException('Unable to encode raw row data: ' . $error);
-        }
-
-        return $encoded;
-    }
 }
