@@ -186,7 +186,7 @@ class ValidationDataService
                 $query->where('discrepancy_category', $filters['category']);
             }
 
-            // Get unique categories and sources
+            // Get unique categories
             $uniqueCategories = $validation->invalidGroups()
                 ->distinct()
                 ->pluck('discrepancy_category')
@@ -204,13 +204,11 @@ class ValidationDataService
 
             $query->orderBy($dbSortKey, $sortDirection);
 
-            // Paginate
-            $perPage = $filters['per_page'] ?? 10;
-            $page = $filters['page'] ?? 1;
-            $results = $query->paginate($perPage, ['*'], 'page', $page);
+            // Get all matching records (before source filter and pagination)
+            $allGroups = $query->get();
 
-            $data = $results->items();
-            $formattedData = array_map(function ($group) {
+            // Format data with sourceLabel
+            $formattedData = $allGroups->map(function ($group) {
                 return [
                     'key' => $group->key_value,
                     'discrepancy_category' => $group->discrepancy_category,
@@ -225,18 +223,34 @@ class ValidationDataService
                         'discrepancy_category' => $group->discrepancy_category,
                     ]),
                 ];
-            }, $data);
+            })->toArray();
 
-            // Get unique sources from formatted data
+            // Get unique sources from all formatted data
             $uniqueSources = array_values(array_unique(array_column($formattedData, 'sourceLabel')));
 
+            // Apply source filter after computing sourceLabel
+            if (!empty($filters['source'])) {
+                $formattedData = array_filter($formattedData, function ($item) use ($filters) {
+                    return $item['sourceLabel'] === $filters['source'];
+                });
+                $formattedData = array_values($formattedData); // Re-index array
+            }
+
+            // Manual pagination after filtering
+            $perPage = $filters['per_page'] ?? 10;
+            $page = $filters['page'] ?? 1;
+            $total = count($formattedData);
+            $totalPages = ceil($total / $perPage);
+            $offset = ($page - 1) * $perPage;
+            $paginatedData = array_slice($formattedData, $offset, $perPage);
+
             return [
-                'data' => $formattedData,
+                'data' => $paginatedData,
                 'pagination' => [
-                    'current_page' => $results->currentPage(),
-                    'per_page' => $results->perPage(),
-                    'total' => $results->total(),
-                    'total_pages' => $results->lastPage(),
+                    'current_page' => (int) $page,
+                    'per_page' => (int) $perPage,
+                    'total' => $total,
+                    'total_pages' => $totalPages,
                 ],
                 'filters' => [
                     'search' => $filters['search'] ?? '',
