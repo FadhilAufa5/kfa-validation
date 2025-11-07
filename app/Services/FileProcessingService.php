@@ -80,8 +80,28 @@ class FileProcessingService
 
         try {
             $reader = IOFactory::createReaderForFile($sourcePath);
-            $reader->setReadDataOnly(false);
+            $reader->setReadDataOnly(true);
             $spreadsheet = $reader->load($sourcePath);
+            $sheet = $spreadsheet->getActiveSheet();
+
+            // Handle merged cells by filling them with the master cell value
+            $mergedCells = $sheet->getMergeCells();
+            foreach ($mergedCells as $mergedRange) {
+                $cells = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::extractAllCellReferencesInRange($mergedRange);
+                $masterCell = $cells[0];
+                $masterValue = $sheet->getCell($masterCell)->getValue();
+                
+                foreach ($cells as $cell) {
+                    if ($cell !== $masterCell) {
+                        $sheet->getCell($cell)->setValue($masterValue);
+                    }
+                }
+            }
+
+            // Unmerge all cells after filling them
+            foreach ($mergedCells as $mergedRange) {
+                $sheet->unmergeCells($mergedRange);
+            }
 
             $writer = new Csv($spreadsheet);
             $writer->setDelimiter(',');
@@ -93,7 +113,8 @@ class FileProcessingService
 
             Log::info('Excel converted to CSV successfully', [
                 'destination' => $destinationPath,
-                'file_size' => filesize($destinationPath)
+                'file_size' => filesize($destinationPath),
+                'merged_cells_handled' => count($mergedCells)
             ]);
         } catch (\Exception $e) {
             Log::error('Excel to CSV conversion failed', [
