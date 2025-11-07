@@ -110,6 +110,13 @@ Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
     Route::get('/activity-logs/{activityLog}', [ActivityLogController::class, 'show'])->name('activity-logs.show');
 });
 
+// Validation Settings (Super Admin Only)
+Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
+    Route::get('/validation-setting', [App\Http\Controllers\ValidationSettingController::class, 'index'])->name('validation-setting.index');
+    Route::post('/validation-setting/tolerance', [App\Http\Controllers\ValidationSettingController::class, 'updateTolerance'])->name('validation-setting.tolerance');
+    Route::post('/validation-setting/upload-im-data', [App\Http\Controllers\ValidationSettingController::class, 'uploadImData'])->name('validation-setting.upload-im-data');
+});
+
 // Include additional route files
 require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';

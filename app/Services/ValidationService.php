@@ -7,10 +7,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Validation;
 use App\Models\MappedUploadedFile;
+use App\Models\ValidationSetting;
 
 class ValidationService
 {
-    private const TOLERANCE = 1000.01;
+    private const DEFAULT_TOLERANCE = 1000.01;
+    
+    private function getTolerance(): float
+    {
+        return ValidationSetting::get('rounding_tolerance', self::DEFAULT_TOLERANCE);
+    }
 
     public function __construct(
         private FileProcessingService $fileProcessingService
@@ -287,7 +293,8 @@ class ValidationService
                     ];
                 } else {
                     $difference = $uploadedValue - $validationValue;
-                    if (abs($difference) <= self::TOLERANCE) {
+                    $tolerance = $this->getTolerance();
+                    if (abs($difference) <= $tolerance) {
                         $note = ($difference == 0) ? 'Sum Matched' : 'Pembulatan';
                         $matchedGroups[$key] = [
                             'uploaded_total' => $uploadedValue,
@@ -369,7 +376,8 @@ class ValidationService
                 $matchedKeys[] = $key; // Retur doesn't record
             } else if ($validationValue !== null) {
                 $diff = abs($uploadedValue - $validationValue);
-                if ($diff <= self::TOLERANCE) {
+                $tolerance = $this->getTolerance();
+                if ($diff <= $tolerance) {
                     $matchedKeys[] = $key;
                 }
             }

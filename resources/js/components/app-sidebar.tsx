@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { HandCoins, History, LayoutGrid, Store, Users, Activity,LayoutDashboard  } from 'lucide-react';
+import { HandCoins, History, LayoutGrid, Store, Users, Activity, LayoutDashboard, Settings } from 'lucide-react';
 
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
@@ -67,6 +67,11 @@ const uyNavItems: NavItem[] = [
         title: 'Log Aktivitas',
         href: '/activity-logs',
         icon: Activity,
+    },
+    {
+        title: 'Validation Setting',
+        href: '/validation-setting',
+        icon: Settings,
     },
 ];
 
