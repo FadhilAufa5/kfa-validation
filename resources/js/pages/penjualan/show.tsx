@@ -1,20 +1,20 @@
 'use client';
 
 import DocumentComparisonPopup from '@/components/DocumentComparisonPopup';
+import InvalidCategoriesBarChart from '@/components/InvalidCategoriesBarChart';
 import InvalidGroupsTabContent from '@/components/InvalidGroupsTabContent';
+import InvalidSourcesBarChart from '@/components/InvalidSourcesBarChart';
 import MatchedGroupsTabContent from '@/components/MatchedGroupsTabContent';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import TopDiscrepanciesChart from '@/components/TopDiscrepanciesChart';
+import ValidNotesDistributionChart from '@/components/ValidNotesDistributionChart';
+import ValidationScoreDonutChart from '@/components/ValidationScoreDonutChart';
+import ValidationStatsCards from '@/components/ValidationStatsCards';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
 
-import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
     CheckCircle2,
@@ -22,17 +22,12 @@ import {
     FileText,
     FileX2,
     Loader2,
-    RotateCcw,
     Scale,
-    Sheet,
-    TriangleAlert,
-    UploadCloud,
     XCircle,
 } from 'lucide-react';
 
 import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
-import { route } from 'ziggy-js';
 
 interface ValidationGroupPaginated {
     key: string;
@@ -95,44 +90,14 @@ interface PaginationData<T> {
 type ValidationPageProps = {
     validationData?: ValidationData;
     validationId: string;
-    document_category?: string;
-    flash?: {
-        success?: string;
-        error?: string;
-    };
 };
-
-type UploadStep =
-    | 'initial'
-    | 'converting'
-    | 'previewing'
-    | 'processing'
-    | 'validating'
-    | 'validation_complete';
-
-interface ValidationResult {
-    status: 'valid' | 'invalid';
-    invalid_groups: {
-        [key: string]: {
-            discrepancy_category: string;
-            error: string;
-            uploaded_total: number;
-            source_total: number;
-            discrepancy_value: number;
-        };
-    };
-    invalid_rows: {
-        row_index: number;
-        key_value: string;
-        total_omset: number;
-        error: string;
-    }[];
-    validation_id: number;
-}
 
 export default function PenjualanShow() {
     const { props } = usePage<ValidationPageProps>();
-    const { validationData, validationId, document_category = 'Penjualan', flash } = props;
+    const {
+        validationData,
+        validationId,
+    } = props;
 
     const breadcrumbs = useMemo(
         () => [
@@ -142,23 +107,6 @@ export default function PenjualanShow() {
         ],
         [validationId],
     );
-
-    // Upload-related state and form
-    const { data: uploadData, setData: setUploadData, reset: resetUploadForm } = useForm<{ document: File | null }>({
-        document: null,
-    });
-    
-    const [uploadStep, setUploadStep] = useState<UploadStep>('initial');
-    const [isUploadLoading, setIsUploadLoading] = useState(false);
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [uploadApiError, setUploadApiError] = useState<string | null>(null);
-    const [needsConversion, setNeedsConversion] = useState(false);
-    const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
-    const [previewData, setPreviewData] = useState<string[][] | null>(null);
-    const [headerRow, setHeaderRow] = useState<number>(1);
-    const [processedResult, setProcessedResult] = useState<{ data_count: number; } | null>(null);
-    const [uploadValidationResult, setUploadValidationResult] = useState<ValidationResult | null>(null);
-    const [showUploadSection, setShowUploadSection] = useState(false);
 
     // State for invalid groups table controls
     const [searchTerm, setSearchTerm] = useState('');
@@ -190,10 +138,12 @@ export default function PenjualanShow() {
     // State for document comparison popup
     const [isPopupOpen, setIsPopupOpen] = useState(false);
     const [selectedKey, setSelectedKey] = useState('');
-    const [uploadedDocData, setUploadedDocData] = useState<any[] | null>(null);
-    const [validationDocData, setValidationDocData] = useState<any[] | null>(
-        null,
-    );
+    const [uploadedDocData, setUploadedDocData] = useState<
+        Record<string, unknown>[] | null
+    >(null);
+    const [validationDocData, setValidationDocData] = useState<
+        Record<string, unknown>[] | null
+    >(null);
     const [uploadedTotal, setUploadedTotal] = useState<number | null>(null);
     const [sourceTotal, setSourceTotal] = useState<number | null>(null);
     const [uploadedSumField, setUploadedSumField] = useState<string | null>(
@@ -211,214 +161,126 @@ export default function PenjualanShow() {
     const [allMatchedGroups, setAllMatchedGroups] = useState<
         MatchedGroupPaginated[]
     >([]);
+    const [activeTab, setActiveTab] = useState<string>(
+        validationData && validationData.mismatched > 0 ? 'invalid' : 'valid',
+    );
+    const [chartDataLoaded, setChartDataLoaded] = useState(false);
 
     // Calculate total groups (invalid + matched)
     const totalGroups = useMemo(() => {
+        if (!validationData) return 0;
         return validationData.invalidGroups + validationData.matchedGroups;
-    }, [validationData.invalidGroups, validationData.matchedGroups]);
-
-    // Upload handlers
-    const handleUploadReset = () => {
-        resetUploadForm('document');
-        setUploadStep('initial');
-        setIsUploadLoading(false);
-        setUploadProgress(0);
-        setUploadApiError(null);
-        setNeedsConversion(false);
-        setUploadedFilename(null);
-        setPreviewData(null);
-        setHeaderRow(1);
-        setProcessedResult(null);
-        setUploadValidationResult(null);
-    };
-
-    const handleUploadAndPreview = async () => {
-        if (!uploadData.document) {
-            setUploadApiError('Silakan pilih file terlebih dahulu.');
-            return;
-        }
-
-        const fileExtension = uploadData.document.name.split('.').pop()?.toLowerCase();
-        const requiresConversion = fileExtension === 'xlsx' || fileExtension === 'xls';
-        setNeedsConversion(requiresConversion);
-
-        setIsUploadLoading(true);
-        setUploadApiError(null);
-        setUploadStep(requiresConversion ? 'converting' : 'previewing');
-        setUploadProgress(0);
-
-        const formData = new FormData();
-        formData.append('document', uploadData.document);
-
-        try {
-            const saveUrl = route('penjualan.save', {
-                type: document_category.toLowerCase(),
-            });
-
-            const uploadResponse = await axios.post(saveUrl, formData, {
-                withCredentials: true,
-                headers: {
-                    Accept: 'application/json',
-                },
-                onUploadProgress: (progressEvent) => {
-                    const percentCompleted = Math.round(
-                        (progressEvent.loaded * 100) / (progressEvent.total || 1),
-                    );
-                    setUploadProgress(percentCompleted);
-                },
-            });
-
-            const { filename } = uploadResponse.data || {};
-            if (!filename) throw new Error('Server tidak mengembalikan nama file.');
-
-            setUploadedFilename(filename);
-
-            if (requiresConversion) {
-                setUploadStep('previewing');
-            }
-
-            const previewUrl = route('penjualan.preview', { filename });
-            const previewResponse = await axios.get(previewUrl, {
-                withCredentials: true,
-            });
-
-            setPreviewData(previewResponse.data.preview);
-        } catch (error: any) {
-            console.error('❌ Upload failed:', error);
-            const msg =
-                error.response?.data?.message ||
-                error.response?.data?.error ||
-                error.message;
-            setUploadApiError(msg || 'Gagal mengunggah file.');
-            setUploadStep('initial');
-        } finally {
-            setIsUploadLoading(false);
-        }
-    };
-
-    const handleProcessFile = async () => {
-        if (!uploadedFilename) {
-            setUploadApiError('Tidak ada file yang diunggah untuk diproses.');
-            return;
-        }
-
-        setIsUploadLoading(true);
-        setUploadApiError(null);
-        setUploadStep('processing');
-
-        try {
-            const processUrl = route('penjualan.processWithHeader', {
-                filename: uploadedFilename,
-            });
-            const response = await axios.post(processUrl, { headerRow });
-            setProcessedResult({ data_count: response.data.data_count });
-
-            await handleValidateFile(uploadedFilename);
-        } catch (error: any) {
-            console.error('❌ Processing failed', error);
-            const errorMessage =
-                error.response?.data?.error ||
-                'Gagal memproses file. Pastikan baris header yang dipilih benar.';
-            setUploadApiError(errorMessage);
-            setUploadStep('previewing');
-        } finally {
-            setIsUploadLoading(false);
-        }
-    };
-
-    const handleValidateFile = async (filenameParam?: string) => {
-        const filenameToUse = filenameParam || uploadedFilename;
-        if (!filenameToUse) {
-            setUploadApiError('Tidak ada file yang diunggah untuk divalidasi.');
-            return;
-        }
-
-        setIsUploadLoading(true);
-        setUploadApiError(null);
-        setUploadStep('validating');
-
-        try {
-            const validateUrl = route('penjualan.validateFile', {
-                type: document_category.toLowerCase(),
-            });
-            const response = await axios.post(validateUrl, {
-                filename: filenameToUse,
-                headerRow: headerRow,
-            });
-            setUploadValidationResult(response.data);
-            setUploadStep('validation_complete');
-
-            // Redirect to the newly created validation detail page
-            if (response.data.validation_id) {
-                setTimeout(() => {
-                    router.visit(`/penjualan/${response.data.validation_id}`);
-                }, 2000);
-            }
-        } catch (error: any) {
-            console.error('❌ Validation failed', error);
-            const errorMessage =
-                error.response?.data?.error ||
-                error.message ||
-                'Terjadi kesalahan saat memvalidasi file.';
-            setUploadApiError(errorMessage);
-            setUploadStep('previewing');
-        } finally {
-            setIsUploadLoading(false);
-        }
-    };
+    }, [validationData]);
 
     // Data untuk kartu statistik
     const stats = useMemo(
-        () => [
-            {
-                title: 'Validation Status',
-                value: validationData.isValid ? 'Valid' : 'Invalid',
-                icon: validationData.isValid ? CheckCircle2 : XCircle,
-                color: validationData.isValid
-                    ? 'text-green-600'
-                    : 'text-red-600',
-            },
-            {
-                title: 'Total Records Processed',
-                value: validationData.total.toLocaleString('id-ID'),
-                icon: Scale,
-                groups: totalGroups,
-            },
-
-            {
-                title: 'Total Matched Records',
-                value: validationData.matched.toLocaleString('id-ID'),
-                icon: FileCheck2,
-                groups: validationData.matchedGroups,
-                color:
-                    validationData.matched > 0
+        () => {
+            if (!validationData) return [];
+            return [
+                {
+                    title: 'Validation Status',
+                    value: validationData.isValid ? 'Valid' : 'Invalid',
+                    icon: validationData.isValid ? CheckCircle2 : XCircle,
+                    color: validationData.isValid
                         ? 'text-green-600'
-                        : 'text-muted-foreground',
-            },
-            {
-                title: 'Total Mismatched Records',
-                value: validationData.mismatched.toLocaleString('id-ID'),
-                icon: FileX2,
-                groups: validationData.invalidGroups,
-                color:
-                    validationData.mismatched > 0
-                        ? 'text-red-600'
-                        : 'text-muted-foreground',
-            },
-        ],
-        [
-            validationData.isValid,
-            validationData.total,
-            validationData.matched,
-            validationData.mismatched,
-            validationData.invalidGroups,
-            validationData.matchedGroups,
-            totalGroups,
-        ],
+                        : 'text-red-600',
+                },
+                {
+                    title: 'Total Records Processed',
+                    value: validationData.total.toLocaleString('id-ID'),
+                    icon: Scale,
+                    groups: totalGroups,
+                },
+
+                {
+                    title: 'Total Matched Records',
+                    value: validationData.matched.toLocaleString('id-ID'),
+                    icon: FileCheck2,
+                    groups: validationData.matchedGroups,
+                    color:
+                        validationData.matched > 0
+                            ? 'text-green-600'
+                            : 'text-muted-foreground',
+                },
+                {
+                    title: 'Total Mismatched Records',
+                    value: validationData.mismatched.toLocaleString('id-ID'),
+                    icon: FileX2,
+                    groups: validationData.invalidGroups,
+                    color:
+                        validationData.mismatched > 0
+                            ? 'text-red-600'
+                            : 'text-muted-foreground',
+                },
+            ];
+        },
+        [validationData, totalGroups],
     );
 
-    // Load invalid groups with pagination
+    // Load chart data only once (lazy loaded)
     useEffect(() => {
+        if (chartDataLoaded || !validationData) return;
+
+        const fetchChartData = async () => {
+            try {
+                // Fetch both chart data in parallel for better performance
+                const promises = [];
+
+                if (validationData.mismatched > 0) {
+                    promises.push(
+                        axios
+                            .get(
+                                `/penjualan/${validationId}/invalid-groups/all`,
+                            )
+                            .then((response) =>
+                                setAllInvalidGroups(response.data),
+                            )
+                            .catch((error) =>
+                                console.error(
+                                    'Error fetching all invalid groups:',
+                                    error,
+                                ),
+                            ),
+                    );
+                }
+
+                if (validationData.matched > 0) {
+                    promises.push(
+                        axios
+                            .get(
+                                `/penjualan/${validationId}/matched-records/all`,
+                            )
+                            .then((response) =>
+                                setAllMatchedGroups(response.data),
+                            )
+                            .catch((error) =>
+                                console.error(
+                                    'Error fetching all matched groups:',
+                                    error,
+                                ),
+                            ),
+                    );
+                }
+
+                await Promise.all(promises);
+                setChartDataLoaded(true);
+            } catch (error) {
+                console.error('Error fetching chart data:', error);
+            }
+        };
+
+        // Delay chart data loading slightly to prioritize tab data
+        const timer = setTimeout(() => {
+            fetchChartData();
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [validationId, chartDataLoaded, validationData]);
+
+    // Load invalid groups with pagination (only when active tab is invalid)
+    useEffect(() => {
+        if (!validationData || validationData.mismatched === 0 || activeTab !== 'invalid') return;
+
         const fetchInvalidGroups = async () => {
             setInvalidGroupsLoading(true);
             try {
@@ -453,42 +315,14 @@ export default function PenjualanShow() {
         sortConfigInvalid,
         currentPageInvalid,
         itemsPerPageInvalid,
+        activeTab,
+        validationData,
     ]);
 
-    // Load all invalid groups data for charts
+    // Load matched groups with pagination (only when active tab is valid)
     useEffect(() => {
-        const fetchAllInvalidGroups = async () => {
-            try {
-                const response = await axios.get(
-                    `/penjualan/${validationId}/invalid-groups/all`,
-                );
-                setAllInvalidGroups(response.data);
-            } catch (error) {
-                console.error('Error fetching all invalid groups:', error);
-            }
-        };
+        if (!validationData || validationData.matched === 0 || activeTab !== 'valid') return;
 
-        fetchAllInvalidGroups();
-    }, [validationId]);
-
-    // Load all matched groups data for charts
-    useEffect(() => {
-        const fetchAllMatchedGroups = async () => {
-            try {
-                const response = await axios.get(
-                    `/penjualan/${validationId}/matched-records/all`,
-                );
-                setAllMatchedGroups(response.data);
-            } catch (error) {
-                console.error('Error fetching all matched groups:', error);
-            }
-        };
-
-        fetchAllMatchedGroups();
-    }, [validationId]);
-
-    // Load matched groups with pagination
-    useEffect(() => {
         const fetchMatchedGroups = async () => {
             setMatchedGroupsLoading(true);
             try {
@@ -521,6 +355,8 @@ export default function PenjualanShow() {
         sortConfigMatched,
         currentPageMatched,
         itemsPerPageMatched,
+        activeTab,
+        validationData,
     ]);
 
     // Get unique categories for filter dropdown (from backend)
@@ -664,237 +500,6 @@ export default function PenjualanShow() {
             <Head title={`Detail Validasi #${validationId}`} />
 
             <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
-                {/* Upload New File Section */}
-                <Card className={showUploadSection ? '' : 'border-dashed'}>
-                    <CardHeader>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <CardTitle className="text-lg">
-                                    {showUploadSection ? `Upload Dokumen Penjualan ${document_category}` : 'Upload New Validation File'}
-                                </CardTitle>
-                                {showUploadSection && (
-                                    <CardDescription className="mt-1">
-                                        Unggah, pratinjau, dan proses file Anda dalam beberapa langkah mudah.
-                                    </CardDescription>
-                                )}
-                            </div>
-                            <Button
-                                variant={showUploadSection ? 'outline' : 'default'}
-                                size="sm"
-                                onClick={() => {
-                                    setShowUploadSection(!showUploadSection);
-                                    if (!showUploadSection) {
-                                        handleUploadReset();
-                                    }
-                                }}
-                            >
-                                {showUploadSection ? (
-                                    <>
-                                        <XCircle className="mr-2 h-4 w-4" />
-                                        Close Upload
-                                    </>
-                                ) : (
-                                    <>
-                                        <UploadCloud className="mr-2 h-4 w-4" />
-                                        Upload New File
-                                    </>
-                                )}
-                            </Button>
-                        </div>
-                    </CardHeader>
-
-                    {showUploadSection && (
-                        <CardContent>
-                            {uploadApiError && (
-                                <Alert variant="destructive" className="mb-6">
-                                    <TriangleAlert className="h-4 w-4" />
-                                    <AlertTitle>Terjadi Kesalahan</AlertTitle>
-                                    <AlertDescription>{uploadApiError}</AlertDescription>
-                                </Alert>
-                            )}
-                            {flash?.error && !uploadApiError && (
-                                <Alert variant="destructive" className="mb-6">
-                                    <TriangleAlert className="h-4 w-4" />
-                                    <AlertTitle>Terjadi Kesalahan</AlertTitle>
-                                    <AlertDescription>{flash.error}</AlertDescription>
-                                </Alert>
-                            )}
-
-                            {/* Step 1: Initial Upload */}
-                            {uploadStep === 'initial' && (
-                                <div className="space-y-6">
-                                    <div className="grid w-full items-center gap-1.5">
-                                        <Label htmlFor="document">Pilih File</Label>
-                                        <Input
-                                            id="document"
-                                            type="file"
-                                            accept=".xlsx,.xls,.csv"
-                                            onChange={(e) => {
-                                                const file = e.target.files?.[0] ?? null;
-                                                setUploadData('document', file);
-                                            }}
-                                            disabled={isUploadLoading}
-                                        />
-                                    </div>
-                                    <div className="flex justify-end">
-                                        <Button
-                                            onClick={handleUploadAndPreview}
-                                            disabled={isUploadLoading || !uploadData.document}
-                                        >
-                                            {isUploadLoading ? (
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <UploadCloud className="mr-2 h-4 w-4" />
-                                            )}
-                                            Unggah & Pratinjau
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Step 1.5: Converting */}
-                            {uploadStep === 'converting' && isUploadLoading && (
-                                <div className="space-y-4">
-                                    <Alert variant="default" className="border-blue-500">
-                                        <Sheet className="h-4 w-4" />
-                                        <AlertTitle>Mengonversi File</AlertTitle>
-                                        <AlertDescription>
-                                            File Excel sedang dikonversi ke format CSV untuk diproses...
-                                        </AlertDescription>
-                                    </Alert>
-                                    <div className="space-y-2">
-                                        <div className="flex items-center gap-2">
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                            <p className="text-sm text-muted-foreground">
-                                                Mengunggah dan mengonversi file...
-                                            </p>
-                                        </div>
-                                        <Progress value={uploadProgress} className="w-full" />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Step 2: Previewing */}
-                            {uploadStep === 'previewing' && isUploadLoading && (
-                                <div className="space-y-2">
-                                    <p className="text-sm text-muted-foreground">
-                                        {needsConversion ? 'Memuat pratinjau...' : 'Mengunggah file...'}
-                                    </p>
-                                    <Progress value={uploadProgress} className="w-full" />
-                                </div>
-                            )}
-
-                            {uploadStep === 'previewing' && !isUploadLoading && previewData && (
-                                <div className="space-y-6">
-                                    <Alert variant="default" className="border-blue-500">
-                                        <Sheet className="h-4 w-4" />
-                                        <AlertTitle>Pratinjau Data</AlertTitle>
-                                        <AlertDescription>
-                                            File <strong>{uploadedFilename}</strong> berhasil diunggah. Klik pada baris di bawah untuk memilihnya sebagai header.
-                                        </AlertDescription>
-                                    </Alert>
-
-                                    <div className="max-h-80 overflow-auto rounded-md border">
-                                        <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead className="w-16">Baris</TableHead>
-                                                    {previewData[0]?.map((_, colIndex) => (
-                                                        <TableHead key={colIndex}>
-                                                            Kolom {String.fromCharCode(65 + colIndex)}
-                                                        </TableHead>
-                                                    ))}
-                                                </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                                {previewData.map((row, rowIndex) => (
-                                                    <TableRow
-                                                        key={rowIndex}
-                                                        onClick={() => setHeaderRow(rowIndex + 1)}
-                                                        className={`cursor-pointer transition-colors hover:bg-muted/50 ${
-                                                            headerRow === rowIndex + 1 ? 'bg-muted' : ''
-                                                        }`}
-                                                    >
-                                                        <TableCell className="font-medium">
-                                                            {rowIndex + 1}
-                                                        </TableCell>
-                                                        {row.map((cell, cellIndex) => (
-                                                            <TableCell key={cellIndex}>{cell}</TableCell>
-                                                        ))}
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </div>
-
-                                    <div className="flex items-center gap-4">
-                                        <Label htmlFor="header-row" className="whitespace-nowrap">
-                                            Baris Header Dipilih:
-                                        </Label>
-                                        <Input
-                                            id="header-row"
-                                            type="number"
-                                            min="1"
-                                            className="w-24"
-                                            value={headerRow}
-                                            onChange={(e) => setHeaderRow(parseInt(e.target.value, 10) || 1)}
-                                        />
-                                    </div>
-
-                                    <div className="flex justify-end gap-3">
-                                        <Button
-                                            variant="outline"
-                                            onClick={handleUploadReset}
-                                            disabled={isUploadLoading}
-                                        >
-                                            <RotateCcw className="mr-2 h-4 w-4" />
-                                            Unggah File Lain
-                                        </Button>
-                                        <Button onClick={handleProcessFile} disabled={isUploadLoading}>
-                                            {isUploadLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                            Proses Data
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Step 3: Processing */}
-                            {uploadStep === 'processing' && (
-                                <div className="space-y-6">
-                                    <div className="flex items-center gap-2">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        <p className="text-sm text-muted-foreground">Memproses file...</p>
-                                    </div>
-                                    <Progress value={50} className="w-full" />
-                                </div>
-                            )}
-
-                            {/* Step 4: Validating */}
-                            {uploadStep === 'validating' && (
-                                <div className="space-y-6">
-                                    <div className="flex items-center gap-2">
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                        <p className="text-sm text-muted-foreground">Memvalidasi file...</p>
-                                    </div>
-                                    <Progress value={75} className="w-full" />
-                                </div>
-                            )}
-
-                            {/* Step 5: Validation Complete */}
-                            {uploadStep === 'validation_complete' && uploadValidationResult && (
-                                <div className="space-y-6">
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-sm text-green-600">
-                                            Validasi Selesai... Mengarahkan ke dashboard analisis
-                                        </p>
-                                    </div>
-                                    <Progress value={100} className="w-full" />
-                                </div>
-                            )}
-                        </CardContent>
-                    )}
-                </Card>
-
                 {/* Header */}
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -925,394 +530,52 @@ export default function PenjualanShow() {
                 </div>
 
                 {/* Horizontal Metrics Layout */}
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                    {stats.map((stat, index) => (
-                        <div
-                            key={index}
-                            className="rounded-lg border bg-card text-card-foreground shadow-sm"
-                        >
-                            <div className="flex flex-row items-center justify-between p-3">
-                                <div>
-                                    <CardTitle className="text-xs font-medium text-muted-foreground">
-                                        {stat.title}
-                                    </CardTitle>
-                                </div>
-                                <stat.icon
-                                    className={`h-4 w-4 ${stat.color || 'text-muted-foreground'}`}
-                                />
-                            </div>
-                            <div className="p-3 pt-0">
-                                <div
-                                    className={`text-lg font-bold ${stat.color || ''}`}
-                                >
-                                    {stat.value}
-                                </div>
-                                {stat.groups !== undefined && (
-                                    <div className="mt-1 flex items-center gap-1">
-                                        <span className="text-xs text-muted-foreground">
-                                            {stat.groups.toLocaleString(
-                                                'id-ID',
-                                            )}{' '}
-                                            Groups
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                <ValidationStatsCards stats={stats} />
 
                 {/* Charts Section */}
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     {/* Donut Chart for Validation Score */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Distribusi Skor Validasi</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-center justify-center">
-                                <div className="relative h-40 w-40">
-                                    {/* Simple CSS donut chart */}
-                                    <div className="absolute inset-0 flex items-center justify-center rounded-full">
-                                        <svg className="h-full w-full -rotate-90 transform">
-                                            <circle
-                                                cx="80"
-                                                cy="80"
-                                                r="70"
-                                                stroke="currentColor"
-                                                strokeWidth="14"
-                                                fill="none"
-                                                className="text-gray-200"
-                                            />
-                                            <circle
-                                                cx="80"
-                                                cy="80"
-                                                r="70"
-                                                stroke="currentColor"
-                                                strokeWidth="14"
-                                                fill="none"
-                                                strokeDasharray={`${2 * Math.PI * 70}`}
-                                                strokeDashoffset={`${2 * Math.PI * 70 * (1 - validationData.score / 100)}`}
-                                                className={
-                                                    validationData.score >= 80
-                                                        ? 'text-green-500'
-                                                        : validationData.score >=
-                                                            50
-                                                          ? 'text-yellow-500'
-                                                          : 'text-red-500'
-                                                }
-                                            />
-                                        </svg>
-                                        <div className="absolute flex flex-col items-center">
-                                            <span className="text-xl font-bold">
-                                                {validationData.score.toFixed(
-                                                    1,
-                                                )}
-                                                %
-                                            </span>
-                                            <span className="text-xs text-muted-foreground">
-                                                Skor Validasi
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="mt-6 flex justify-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full bg-green-500"></div>
-                                    <span className="text-sm">
-                                        Matched: {validationData.matched}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full bg-red-500"></div>
-                                    <span className="text-sm">
-                                        Invalid: {validationData.mismatched}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full bg-orange-500"></div>
-                                    <span className="text-sm">
-                                        Groups: {totalGroups}
-                                    </span>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <ValidationScoreDonutChart
+                        score={validationData.score}
+                        matched={validationData.matched}
+                        mismatched={validationData.mismatched}
+                        totalGroups={totalGroups}
+                    />
 
                     <div className="space-y-6">
                         {/* Horizontal Bar Chart for Invalid Data Categories */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Kategori Data Tidak Valid</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-2">
-                                    {Array.from(
-                                        new Set(
-                                            allInvalidGroups.map(
-                                                (g) => g.discrepancy_category,
-                                            ),
-                                        ),
-                                    )
-                                        .slice(0, 5) // Display up to 5 categories
-                                        .map((category) => {
-                                            const count =
-                                                allInvalidGroups.filter(
-                                                    (g) =>
-                                                        g.discrepancy_category ===
-                                                        category,
-                                                ).length;
-                                            const maxCount = Math.max(
-                                                ...Array.from(
-                                                    new Set(
-                                                        allInvalidGroups.map(
-                                                            (g) =>
-                                                                g.discrepancy_category,
-                                                        ),
-                                                    ),
-                                                ).map(
-                                                    (cat) =>
-                                                        allInvalidGroups.filter(
-                                                            (g) =>
-                                                                g.discrepancy_category ===
-                                                                cat,
-                                                        ).length,
-                                                ),
-                                                1, // Ensure maxCount is at least 1 to avoid division by zero
-                                            );
-                                            return (
-                                                <div
-                                                    key={category}
-                                                    className="flex items-center gap-2"
-                                                >
-                                                    <span className="w-24 truncate text-xs">
-                                                        {category}
-                                                    </span>
-                                                    <div className="relative h-6 flex-1 rounded-full bg-gray-200">
-                                                        <div
-                                                            className="flex h-6 items-center justify-end rounded-full bg-blue-500 pr-2"
-                                                            style={{
-                                                                width: `${(count / maxCount) * 100}%`,
-                                                            }}
-                                                        >
-                                                            <span className="text-xs font-medium text-white">
-                                                                {count}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <InvalidCategoriesBarChart
+                            allInvalidGroups={allInvalidGroups}
+                        />
 
                         {/* Horizontal Bar Chart for Invalid Sumber */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>
-                                    Persentase Sumber Data Tidak Valid
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-2">
-                                    {Array.from(
-                                        new Set(
-                                            allInvalidGroups.map(
-                                                (g) => g.sourceLabel,
-                                            ),
-                                        ),
-                                    )
-                                        .slice(0, 5)
-                                        .map((sourceLabel) => {
-                                            const count =
-                                                allInvalidGroups.filter(
-                                                    (g) =>
-                                                        g.sourceLabel ===
-                                                        sourceLabel,
-                                                ).length;
-                                            const maxCount = Math.max(
-                                                ...Array.from(
-                                                    new Set(
-                                                        allInvalidGroups.map(
-                                                            (g) =>
-                                                                g.sourceLabel,
-                                                        ),
-                                                    ),
-                                                ).map(
-                                                    (label) =>
-                                                        allInvalidGroups.filter(
-                                                            (g) =>
-                                                                g.sourceLabel ===
-                                                                label,
-                                                        ).length,
-                                                ),
-                                                1, // Ensure maxCount is at least 1 to avoid division by zero
-                                            );
-                                            return (
-                                                <div
-                                                    key={sourceLabel}
-                                                    className="flex items-center gap-2"
-                                                >
-                                                    <span className="w-24 truncate text-xs">
-                                                        {sourceLabel}
-                                                    </span>
-                                                    <div className="relative h-6 flex-1 rounded-full bg-gray-200">
-                                                        <div
-                                                            className="flex h-6 items-center justify-end rounded-full bg-purple-500 pr-2"
-                                                            style={{
-                                                                width: `${(count / maxCount) * 100}%`,
-                                                            }}
-                                                        >
-                                                            <span className="text-xs font-medium text-white">
-                                                                {count}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <InvalidSourcesBarChart
+                            allInvalidGroups={allInvalidGroups}
+                        />
                     </div>
                 </div>
 
                 {/* Second Row of Charts */}
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     {/* Top 5 Rows with Highest Selisih */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>
-                                Top 5 Baris dengan Selisih Tertinggi
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                {allInvalidGroups
-                                    .sort(
-                                        (a, b) =>
-                                            Math.abs(b.discrepancy_value) -
-                                            Math.abs(a.discrepancy_value),
-                                    )
-                                    .slice(0, 5)
-                                    .map((item, index) => {
-                                        const absValue = Math.abs(
-                                            item.discrepancy_value,
-                                        );
-                                        const maxValue = Math.max(
-                                            ...allInvalidGroups.map((g) =>
-                                                Math.abs(g.discrepancy_value),
-                                            ),
-                                        );
-                                        const barWidth =
-                                            maxValue > 0
-                                                ? (absValue / maxValue) * 100
-                                                : 0;
-
-                                        return (
-                                            <div
-                                                key={item.key}
-                                                className="flex items-center gap-2"
-                                            >
-                                                <div className="flex w-8 items-center gap-2">
-                                                    <span className="text-xs font-medium text-muted-foreground">
-                                                        #{index + 1}
-                                                    </span>
-                                                </div>
-                                                <span className="w-32 truncate text-xs">
-                                                    {item.key}
-                                                </span>
-                                                <div className="relative h-6 flex-1 rounded-full bg-gray-200">
-                                                    <div
-                                                        className="flex h-6 items-center justify-end rounded-full bg-red-500 pr-2"
-                                                        style={{
-                                                            width: `${barWidth}%`,
-                                                        }}
-                                                    >
-                                                        <span className="text-xs font-medium text-white">
-                                                            {absValue.toLocaleString(
-                                                                'id-ID',
-                                                            )}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                {allInvalidGroups.length === 0 && (
-                                    <div className="py-4 text-center text-muted-foreground">
-                                        Tidak ada data selisih untuk ditampilkan
-                                    </div>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <TopDiscrepanciesChart
+                        allInvalidGroups={allInvalidGroups}
+                    />
 
                     {/* Horizontal Bar Chart for Valid Data Notes */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Distribusi Catatan Data Valid</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                {Array.from(
-                                    new Set(
-                                        allMatchedGroups.map((g) => g.note),
-                                    ),
-                                )
-                                    .slice(0, 5)
-                                    .map((note) => {
-                                        const count = allMatchedGroups.filter(
-                                            (g) => g.note === note,
-                                        ).length;
-                                        const maxCount = Math.max(
-                                            ...Array.from(
-                                                new Set(
-                                                    allMatchedGroups.map(
-                                                        (g) => g.note,
-                                                    ),
-                                                ),
-                                            ).map(
-                                                (cat) =>
-                                                    allMatchedGroups.filter(
-                                                        (g) => g.note === cat,
-                                                    ).length,
-                                            ),
-                                            1, // Ensure maxCount is at least 1 to avoid division by zero
-                                        );
-                                        return (
-                                            <div
-                                                key={note}
-                                                className="flex items-center gap-2"
-                                            >
-                                                <span className="w-24 truncate text-xs">
-                                                    {note}
-                                                </span>
-                                                <div className="relative h-6 flex-1 rounded-full bg-gray-200">
-                                                    <div
-                                                        className="flex h-6 items-center justify-end rounded-full bg-green-500 pr-2"
-                                                        style={{
-                                                            width: `${(count / maxCount) * 100}%`,
-                                                        }}
-                                                    >
-                                                        <span className="text-xs font-medium text-white">
-                                                            {count}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <ValidNotesDistributionChart
+                        allMatchedGroups={allMatchedGroups}
+                    />
                 </div>
 
                 {/* Tabs for Invalid and Valid Groups */}
                 {validationData.mismatched > 0 || validationData.matched > 0 ? (
-                    <Tabs defaultValue="invalid" className="w-full">
+                    <Tabs
+                        defaultValue={activeTab}
+                        value={activeTab}
+                        onValueChange={setActiveTab}
+                        className="w-full"
+                    >
                         <TabsList className="grid w-full grid-cols-2">
                             {validationData.mismatched > 0 && (
                                 <TabsTrigger value="invalid">

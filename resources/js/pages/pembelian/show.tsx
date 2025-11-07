@@ -1,11 +1,16 @@
 'use client';
 
 import DocumentComparisonPopup from '@/components/DocumentComparisonPopup';
+import InvalidCategoriesBarChart from '@/components/InvalidCategoriesBarChart';
 import InvalidGroupsTabContent from '@/components/InvalidGroupsTabContent';
+import InvalidSourcesBarChart from '@/components/InvalidSourcesBarChart';
 import MatchedGroupsTabContent from '@/components/MatchedGroupsTabContent';
+import TopDiscrepanciesChart from '@/components/TopDiscrepanciesChart';
+import ValidNotesDistributionChart from '@/components/ValidNotesDistributionChart';
+import ValidationScoreDonutChart from '@/components/ValidationScoreDonutChart';
+import ValidationStatsCards from '@/components/ValidationStatsCards';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
 
@@ -130,10 +135,12 @@ export default function PembelianShow() {
     // State for document comparison popup
     const [isPopupOpen, setIsPopupOpen] = useState(false);
     const [selectedKey, setSelectedKey] = useState('');
-    const [uploadedDocData, setUploadedDocData] = useState<any[] | null>(null);
-    const [validationDocData, setValidationDocData] = useState<any[] | null>(
-        null,
-    );
+    const [uploadedDocData, setUploadedDocData] = useState<
+        Record<string, unknown>[] | null
+    >(null);
+    const [validationDocData, setValidationDocData] = useState<
+        Record<string, unknown>[] | null
+    >(null);
     const [uploadedTotal, setUploadedTotal] = useState<number | null>(null);
     const [sourceTotal, setSourceTotal] = useState<number | null>(null);
     const [uploadedSumField, setUploadedSumField] = useState<string | null>(
@@ -151,64 +158,106 @@ export default function PembelianShow() {
     const [allMatchedGroups, setAllMatchedGroups] = useState<
         MatchedGroupPaginated[]
     >([]);
+    const [activeTab, setActiveTab] = useState<string>(
+        validationData && validationData.mismatched > 0 ? 'invalid' : 'valid'
+    );
+    const [chartDataLoaded, setChartDataLoaded] = useState(false);
 
     // Calculate total groups (invalid + matched)
     const totalGroups = useMemo(() => {
+        if (!validationData) return 0;
         return validationData.invalidGroups + validationData.matchedGroups;
-    }, [validationData.invalidGroups, validationData.matchedGroups]);
+    }, [validationData]);
 
     // Data untuk kartu statistik
     const stats = useMemo(
-        () => [
-            {
-                title: 'Validation Status',
-                value: validationData.isValid ? 'Valid' : 'Invalid',
-                icon: validationData.isValid ? CheckCircle2 : XCircle,
-                color: validationData.isValid
-                    ? 'text-green-600'
-                    : 'text-red-600',
-            },
-            {
-                title: 'Total Records Processed',
-                value: validationData.total.toLocaleString('id-ID'),
-                icon: Scale,
-                groups: totalGroups,
-            },
-
-            {
-                title: 'Total Matched Records',
-                value: validationData.matched.toLocaleString('id-ID'),
-                icon: FileCheck2,
-                groups: validationData.matchedGroups,
-                color:
-                    validationData.matched > 0
+        () => {
+            if (!validationData) return [];
+            return [
+                {
+                    title: 'Validation Status',
+                    value: validationData.isValid ? 'Valid' : 'Invalid',
+                    icon: validationData.isValid ? CheckCircle2 : XCircle,
+                    color: validationData.isValid
                         ? 'text-green-600'
-                        : 'text-muted-foreground',
-            },
-            {
-                title: 'Total Mismatched Records',
-                value: validationData.mismatched.toLocaleString('id-ID'),
-                icon: FileX2,
-                groups: validationData.invalidGroups,
-                color:
-                    validationData.mismatched > 0
-                        ? 'text-red-600'
-                        : 'text-muted-foreground',
-            },
-        ],
-        [
-            validationData.isValid,
-            validationData.total,
-            validationData.matched,
-            validationData.mismatched,
-            validationData.invalidGroups,
-            validationData.matchedGroups,
-            totalGroups,
-        ],
+                        : 'text-red-600',
+                },
+                {
+                    title: 'Total Records Processed',
+                    value: validationData.total.toLocaleString('id-ID'),
+                    icon: Scale,
+                    groups: totalGroups,
+                },
+
+                {
+                    title: 'Total Matched Records',
+                    value: validationData.matched.toLocaleString('id-ID'),
+                    icon: FileCheck2,
+                    groups: validationData.matchedGroups,
+                    color:
+                        validationData.matched > 0
+                            ? 'text-green-600'
+                            : 'text-muted-foreground',
+                },
+                {
+                    title: 'Total Mismatched Records',
+                    value: validationData.mismatched.toLocaleString('id-ID'),
+                    icon: FileX2,
+                    groups: validationData.invalidGroups,
+                    color:
+                        validationData.mismatched > 0
+                            ? 'text-red-600'
+                            : 'text-muted-foreground',
+                },
+            ];
+        },
+        [validationData, totalGroups],
     );
 
-    // Load invalid groups with pagination
+    // Load chart data only once (lazy loaded)
     useEffect(() => {
+        if (chartDataLoaded || !validationData) return;
+
+        const fetchChartData = async () => {
+            try {
+                // Fetch both chart data in parallel for better performance
+                const promises = [];
+                
+                if (validationData.mismatched > 0) {
+                    promises.push(
+                        axios.get(`/pembelian/${validationId}/invalid-groups/all`)
+                            .then(response => setAllInvalidGroups(response.data))
+                            .catch(error => console.error('Error fetching all invalid groups:', error))
+                    );
+                }
+                
+                if (validationData.matched > 0) {
+                    promises.push(
+                        axios.get(`/pembelian/${validationId}/matched-records/all`)
+                            .then(response => setAllMatchedGroups(response.data))
+                            .catch(error => console.error('Error fetching all matched groups:', error))
+                    );
+                }
+
+                await Promise.all(promises);
+                setChartDataLoaded(true);
+            } catch (error) {
+                console.error('Error fetching chart data:', error);
+            }
+        };
+
+        // Delay chart data loading slightly to prioritize tab data
+        const timer = setTimeout(() => {
+            fetchChartData();
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [validationId, chartDataLoaded, validationData]);
+
+    // Load invalid groups with pagination (only when active tab is invalid)
+    useEffect(() => {
+        if (!validationData || validationData.mismatched === 0 || activeTab !== 'invalid') return;
+
         const fetchInvalidGroups = async () => {
             setInvalidGroupsLoading(true);
             try {
@@ -243,42 +292,14 @@ export default function PembelianShow() {
         sortConfigInvalid,
         currentPageInvalid,
         itemsPerPageInvalid,
+        activeTab,
+        validationData,
     ]);
 
-    // Load all invalid groups data for charts
+    // Load matched groups with pagination (only when active tab is valid)
     useEffect(() => {
-        const fetchAllInvalidGroups = async () => {
-            try {
-                const response = await axios.get(
-                    `/pembelian/${validationId}/invalid-groups/all`,
-                );
-                setAllInvalidGroups(response.data);
-            } catch (error) {
-                console.error('Error fetching all invalid groups:', error);
-            }
-        };
+        if (!validationData || validationData.matched === 0 || activeTab !== 'valid') return;
 
-        fetchAllInvalidGroups();
-    }, [validationId]);
-
-    // Load all matched groups data for charts
-    useEffect(() => {
-        const fetchAllMatchedGroups = async () => {
-            try {
-                const response = await axios.get(
-                    `/pembelian/${validationId}/matched-records/all`,
-                );
-                setAllMatchedGroups(response.data);
-            } catch (error) {
-                console.error('Error fetching all matched groups:', error);
-            }
-        };
-
-        fetchAllMatchedGroups();
-    }, [validationId]);
-
-    // Load matched groups with pagination
-    useEffect(() => {
         const fetchMatchedGroups = async () => {
             setMatchedGroupsLoading(true);
             try {
@@ -311,6 +332,8 @@ export default function PembelianShow() {
         sortConfigMatched,
         currentPageMatched,
         itemsPerPageMatched,
+        activeTab,
+        validationData,
     ]);
 
     // Get unique categories for filter dropdown (from backend)
@@ -484,392 +507,44 @@ export default function PembelianShow() {
                 </div>
 
                 {/* Horizontal Metrics Layout */}
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                    {stats.map((stat, index) => (
-                        <div
-                            key={index}
-                            className="rounded-lg border bg-card text-card-foreground shadow-sm"
-                        >
-                            <div className="flex flex-row items-center justify-between p-3">
-                                <div>
-                                    <CardTitle className="text-xs font-medium text-muted-foreground">
-                                        {stat.title}
-                                    </CardTitle>
-                                </div>
-                                <stat.icon
-                                    className={`h-4 w-4 ${stat.color || 'text-muted-foreground'}`}
-                                />
-                            </div>
-                            <div className="p-3 pt-0">
-                                <div
-                                    className={`text-lg font-bold ${stat.color || ''}`}
-                                >
-                                    {stat.value}
-                                </div>
-                                {stat.groups !== undefined && (
-                                    <div className="mt-1 flex items-center gap-1">
-                                        <span className="text-xs text-muted-foreground">
-                                            {stat.groups.toLocaleString(
-                                                'id-ID',
-                                            )}{' '}
-                                            Groups
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                <ValidationStatsCards stats={stats} />
 
                 {/* Charts Section */}
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     {/* Donut Chart for Validation Score */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Distribusi Skor Validasi</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-center justify-center">
-                                <div className="relative h-40 w-40">
-                                    {/* Simple CSS donut chart */}
-                                    <div className="absolute inset-0 flex items-center justify-center rounded-full">
-                                        <svg className="h-full w-full -rotate-90 transform">
-                                            <circle
-                                                cx="80"
-                                                cy="80"
-                                                r="70"
-                                                stroke="currentColor"
-                                                strokeWidth="14"
-                                                fill="none"
-                                                className="text-gray-200"
-                                            />
-                                            <circle
-                                                cx="80"
-                                                cy="80"
-                                                r="70"
-                                                stroke="currentColor"
-                                                strokeWidth="14"
-                                                fill="none"
-                                                strokeDasharray={`${2 * Math.PI * 70}`}
-                                                strokeDashoffset={`${2 * Math.PI * 70 * (1 - validationData.score / 100)}`}
-                                                className={
-                                                    validationData.score >= 80
-                                                        ? 'text-green-500'
-                                                        : validationData.score >=
-                                                            50
-                                                          ? 'text-yellow-500'
-                                                          : 'text-red-500'
-                                                }
-                                            />
-                                        </svg>
-                                        <div className="absolute flex flex-col items-center">
-                                            <span className="text-xl font-bold">
-                                                {validationData.score}
-                                                %
-                                            </span>
-                                            <span className="text-xs text-muted-foreground">
-                                                Skor Validasi
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="mt-6 flex justify-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full bg-green-500"></div>
-                                    <span className="text-sm">
-                                        Matched: {validationData.matched}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full bg-red-500"></div>
-                                    <span className="text-sm">
-                                        Invalid: {validationData.mismatched}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="h-3 w-3 rounded-full bg-orange-500"></div>
-                                    <span className="text-sm">
-                                        Groups: {totalGroups}
-                                    </span>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <ValidationScoreDonutChart
+                        score={validationData.score}
+                        matched={validationData.matched}
+                        mismatched={validationData.mismatched}
+                        totalGroups={totalGroups}
+                    />
 
                     <div className="space-y-6">
                         {/* Horizontal Bar Chart for Invalid Data Categories */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Kategori Data Tidak Valid</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-2">
-                                    {Array.from(
-                                        new Set(
-                                            allInvalidGroups.map(
-                                                (g) => g.discrepancy_category,
-                                            ),
-                                        ),
-                                    )
-                                        .slice(0, 5) // Display up to 5 categories
-                                        .map((category) => {
-                                            const count =
-                                                allInvalidGroups.filter(
-                                                    (g) =>
-                                                        g.discrepancy_category ===
-                                                        category,
-                                                ).length;
-                                            const maxCount = Math.max(
-                                                ...Array.from(
-                                                    new Set(
-                                                        allInvalidGroups.map(
-                                                            (g) =>
-                                                                g.discrepancy_category,
-                                                        ),
-                                                    ),
-                                                ).map(
-                                                    (cat) =>
-                                                        allInvalidGroups.filter(
-                                                            (g) =>
-                                                                g.discrepancy_category ===
-                                                                cat,
-                                                        ).length,
-                                                ),
-                                                1, // Ensure maxCount is at least 1 to avoid division by zero
-                                            );
-                                            return (
-                                                <div
-                                                    key={category}
-                                                    className="flex items-center gap-2"
-                                                >
-                                                    <span className="w-24 truncate text-xs">
-                                                        {category}
-                                                    </span>
-                                                    <div className="relative h-6 flex-1 rounded-full bg-gray-200">
-                                                        <div
-                                                            className="flex h-6 items-center justify-end rounded-full bg-blue-500 pr-2"
-                                                            style={{
-                                                                width: `${(count / maxCount) * 100}%`,
-                                                            }}
-                                                        >
-                                                            <span className="text-xs font-medium text-white">
-                                                                {count}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <InvalidCategoriesBarChart allInvalidGroups={allInvalidGroups} />
 
                         {/* Horizontal Bar Chart for Invalid Sumber */}
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>
-                                    Persentase Sumber Data Tidak Valid
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-2">
-                                    {Array.from(
-                                        new Set(
-                                            allInvalidGroups.map(
-                                                (g) => g.sourceLabel,
-                                            ),
-                                        ),
-                                    )
-                                        .slice(0, 5)
-                                        .map((sourceLabel) => {
-                                            const count =
-                                                allInvalidGroups.filter(
-                                                    (g) =>
-                                                        g.sourceLabel ===
-                                                        sourceLabel,
-                                                ).length;
-                                            const maxCount = Math.max(
-                                                ...Array.from(
-                                                    new Set(
-                                                        allInvalidGroups.map(
-                                                            (g) =>
-                                                                g.sourceLabel,
-                                                        ),
-                                                    ),
-                                                ).map(
-                                                    (label) =>
-                                                        allInvalidGroups.filter(
-                                                            (g) =>
-                                                                g.sourceLabel ===
-                                                                label,
-                                                        ).length,
-                                                ),
-                                                1, // Ensure maxCount is at least 1 to avoid division by zero
-                                            );
-                                            return (
-                                                <div
-                                                    key={sourceLabel}
-                                                    className="flex items-center gap-2"
-                                                >
-                                                    <span className="w-24 truncate text-xs">
-                                                        {sourceLabel}
-                                                    </span>
-                                                    <div className="relative h-6 flex-1 rounded-full bg-gray-200">
-                                                        <div
-                                                            className="flex h-6 items-center justify-end rounded-full bg-purple-500 pr-2"
-                                                            style={{
-                                                                width: `${(count / maxCount) * 100}%`,
-                                                            }}
-                                                        >
-                                                            <span className="text-xs font-medium text-white">
-                                                                {count}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <InvalidSourcesBarChart allInvalidGroups={allInvalidGroups} />
                     </div>
                 </div>
 
                 {/* Second Row of Charts */}
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     {/* Top 5 Rows with Highest Selisih */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>
-                                Top 5 Baris dengan Selisih Tertinggi
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                {allInvalidGroups
-                                    .sort(
-                                        (a, b) =>
-                                            Math.abs(b.discrepancy_value) -
-                                            Math.abs(a.discrepancy_value),
-                                    )
-                                    .slice(0, 5)
-                                    .map((item, index) => {
-                                        const absValue = Math.abs(
-                                            item.discrepancy_value,
-                                        );
-                                        const maxValue = Math.max(
-                                            ...allInvalidGroups.map((g) =>
-                                                Math.abs(g.discrepancy_value),
-                                            ),
-                                        );
-                                        const barWidth =
-                                            maxValue > 0
-                                                ? (absValue / maxValue) * 100
-                                                : 0;
-
-                                        return (
-                                            <div
-                                                key={item.key}
-                                                className="flex items-center gap-2"
-                                            >
-                                                <div className="flex w-8 items-center gap-2">
-                                                    <span className="text-xs font-medium text-muted-foreground">
-                                                        #{index + 1}
-                                                    </span>
-                                                </div>
-                                                <span className="w-32 truncate text-xs">
-                                                    {item.key}
-                                                </span>
-                                                <div className="relative h-6 flex-1 rounded-full bg-gray-200">
-                                                    <div
-                                                        className="flex h-6 items-center justify-end rounded-full bg-red-500 pr-2"
-                                                        style={{
-                                                            width: `${barWidth}%`,
-                                                        }}
-                                                    >
-                                                        <span className="text-xs font-medium text-white">
-                                                            {absValue.toLocaleString(
-                                                                'id-ID',
-                                                            )}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                {allInvalidGroups.length === 0 && (
-                                    <div className="py-4 text-center text-muted-foreground">
-                                        Tidak ada data selisih untuk ditampilkan
-                                    </div>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <TopDiscrepanciesChart allInvalidGroups={allInvalidGroups} />
 
                     {/* Horizontal Bar Chart for Valid Data Notes */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Distribusi Catatan Data Valid</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                {Array.from(
-                                    new Set(
-                                        allMatchedGroups.map((g) => g.note),
-                                    ),
-                                )
-                                    .slice(0, 5)
-                                    .map((note) => {
-                                        const count = allMatchedGroups.filter(
-                                            (g) => g.note === note,
-                                        ).length;
-                                        const maxCount = Math.max(
-                                            ...Array.from(
-                                                new Set(
-                                                    allMatchedGroups.map(
-                                                        (g) => g.note,
-                                                    ),
-                                                ),
-                                            ).map(
-                                                (cat) =>
-                                                    allMatchedGroups.filter(
-                                                        (g) => g.note === cat,
-                                                    ).length,
-                                            ),
-                                            1, // Ensure maxCount is at least 1 to avoid division by zero
-                                        );
-                                        return (
-                                            <div
-                                                key={note}
-                                                className="flex items-center gap-2"
-                                            >
-                                                <span className="w-24 truncate text-xs">
-                                                    {note}
-                                                </span>
-                                                <div className="relative h-6 flex-1 rounded-full bg-gray-200">
-                                                    <div
-                                                        className="flex h-6 items-center justify-end rounded-full bg-green-500 pr-2"
-                                                        style={{
-                                                            width: `${(count / maxCount) * 100}%`,
-                                                        }}
-                                                    >
-                                                        <span className="text-xs font-medium text-white">
-                                                            {count}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <ValidNotesDistributionChart allMatchedGroups={allMatchedGroups} />
                 </div>
 
                 {/* Tabs for Invalid and Valid Groups */}
                 {validationData.mismatched > 0 || validationData.matched > 0 ? (
-                    <Tabs defaultValue="invalid" className="w-full">
+                    <Tabs 
+                        defaultValue={activeTab} 
+                        value={activeTab}
+                        onValueChange={setActiveTab}
+                        className="w-full"
+                    >
                         <TabsList className="grid w-full grid-cols-2">
                             {validationData.mismatched > 0 && (
                                 <TabsTrigger value="invalid">
