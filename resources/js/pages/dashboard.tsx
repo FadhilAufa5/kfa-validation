@@ -31,22 +31,8 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: dashboard().url },
 ];
 
-// Dummy data untuk Pie Chart
-const purchaseData = [
-  { name: "Retur", value: 12 },
-  { name: "Mendesak", value: 7 },
-  { name: "Reguler", value: 31 },   
-];
-
-const salesTypeData = [
-  { name: "Reguler", value: 25 },
-  { name: "Debitur", value: 14 },
-  { name: "Ecommerce", value: 20 },
-  { name: "Konsi", value: 8 },
-];
-
-const COLORS_PURCHASE = ["#F97316", "#10B981", "#3B82F6"];
-const COLORS_SALES = ["#6366F1", "#F59E0B", "#84CC16", "#EC4899"];
+const COLORS_PURCHASE = ["#F97316", "#10B981", "#3B82F6", "#8B5CF6", "#EC4899"];
+const COLORS_SALES = ["#6366F1", "#F59E0B", "#84CC16", "#EC4899", "#06B6D4"];
 
 // Label di tengah slice Pie
 const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, value }: any) => {
@@ -69,23 +55,55 @@ const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, per
   );
 };
 
-// Update recentActivities with timestamps
-const recentActivities = [
-  { id: 1, user: "John Doe", action: "mengupload file penjualan", time: "2 menit yang lalu", isNew: true },
-  { id: 2, user: "Jane Smith", action: "memperbarui data pembelian", time: "5 menit yang lalu", isNew: true },
-  { id: 3, user: "Mike Johnson", action: "menghapus file", time: "10 menit yang lalu", isNew: false },
-  { id: 4, user: "Sarah Wilson", action: "menambahkan user baru", time: "15 menit yang lalu", isNew: false },
-];
+interface Activity {
+  id: number;
+  user: string;
+  action: string;
+  time: string;
+  isNew: boolean;
+}
 
+interface Statistics {
+  totalFiles: number;
+  totalPembelian: number;
+  totalPenjualan: number;
+  filesChangeFromLastMonth: number;
+  lastWeekPembelian: number;
+  todayPenjualan: number;
+}
+
+interface ChartData {
+  name: string;
+  value: number;
+}
+
+interface DashboardProps {
+  activeUsersCount: number;
+  statistics: Statistics;
+  pembelianDistribution: ChartData[];
+  penjualanDistribution: ChartData[];
+  recentActivities: Activity[];
+}
 
 export default function Dashboard() {
+  const page = usePage();
   const {
-    activeUsersCount = 1,
-    dummyData = { totalSales: 0, activeProducts: 0, incomingOrders: 0 },
-  } = usePage().props as {
-    activeUsersCount?: number;
-    dummyData?: { totalSales: number; activeProducts: number; incomingOrders: number };
-  };
+    activeUsersCount = 0,
+    statistics = {
+      totalFiles: 0,
+      totalPembelian: 0,
+      totalPenjualan: 0,
+      filesChangeFromLastMonth: 0,
+      lastWeekPembelian: 0,
+      todayPenjualan: 0,
+    },
+    pembelianDistribution = [],
+    penjualanDistribution = [],
+    recentActivities = [],
+  } = page.props as DashboardProps;
+
+  const auth = page.props.auth as any;
+  const userName = auth?.user?.name || 'User';
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -96,10 +114,10 @@ export default function Dashboard() {
         <div className="flex justify-between items-center mb-2">
           <div>
             <h1 className="text-2xl font-semibold leading-tight mb-1">
-              Selamat Datang Uhuy 👋
+              Selamat Datang, {userName}! 👋
             </h1>
             <p className="text-sm text-muted-foreground">
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
+              Berikut adalah ringkasan aktivitas validasi Anda
             </p>
           </div>
 
@@ -213,10 +231,15 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                 <div className="text-2xl font-bold">
-                    {dummyData.totalSales.toLocaleString("id-ID")}
+                    {statistics.totalFiles.toLocaleString("id-ID")}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                    0 dari bulan lalu
+                <p className={`text-xs mt-1 flex items-center gap-1 ${statistics.filesChangeFromLastMonth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {statistics.filesChangeFromLastMonth >= 0 ? (
+                      <ArrowUpRight className="w-3 h-3" />
+                    ) : (
+                      <ArrowDownRight className="w-3 h-3" />
+                    )}
+                    {Math.abs(statistics.filesChangeFromLastMonth)} dari bulan lalu
                 </p>
                 </CardContent>
             </Card>
@@ -231,10 +254,10 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                 <div className="text-2xl font-bold">
-                    {dummyData.activeProducts}
+                    {statistics.totalPembelian.toLocaleString("id-ID")}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                    0 file baru minggu ini
+                    {statistics.lastWeekPembelian} file baru minggu ini
                 </p>
                 </CardContent>
             </Card>
@@ -249,10 +272,10 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                 <div className="text-2xl font-bold">
-                    {dummyData.incomingOrders}
+                    {statistics.totalPenjualan.toLocaleString("id-ID")}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                    0 file baru hari ini
+                    {statistics.todayPenjualan} file baru hari ini
                 </p>
                 </CardContent>
             </Card>
@@ -287,26 +310,32 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex justify-center h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={purchaseData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={renderCustomizedLabel}
-                    outerRadius={120}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {purchaseData.map((_, index) => (
-                      <Cell key={index} fill={COLORS_PURCHASE[index % COLORS_PURCHASE.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              {pembelianDistribution.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pembelianDistribution}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={renderCustomizedLabel}
+                      outerRadius={120}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {pembelianDistribution.map((_, index) => (
+                        <Cell key={index} fill={COLORS_PURCHASE[index % COLORS_PURCHASE.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <p>Tidak ada data pembelian</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -318,26 +347,32 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex justify-center h-[350px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={salesTypeData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={renderCustomizedLabel}
-                    outerRadius={120}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {salesTypeData.map((_, index) => (
-                      <Cell key={index} fill={COLORS_SALES[index % COLORS_SALES.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              {penjualanDistribution.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={penjualanDistribution}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={renderCustomizedLabel}
+                      outerRadius={120}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {penjualanDistribution.map((_, index) => (
+                        <Cell key={index} fill={COLORS_SALES[index % COLORS_SALES.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <p>Tidak ada data penjualan</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
