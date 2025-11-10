@@ -589,9 +589,26 @@ class ValidationDataService
     public function getValidationHistory(array $filters): array
     {
         $query = Validation::with('user');
+        $currentUser = auth()->user();
 
         if (!empty($filters['document_type'])) {
             $query->where('document_type', $filters['document_type']);
+        }
+
+        // Apply role-based filtering
+        if ($currentUser) {
+            if ($currentUser->role === 'super_admin') {
+                // Super admin sees all validation history
+                // No additional filter needed
+            } elseif ($currentUser->role === 'user') {
+                // Regular user sees only their own validation history
+                $query->where('user_id', $currentUser->id);
+            } elseif ($currentUser->role === 'visitor') {
+                // Visitor sees assigned user's validation history
+                // If no user is assigned, they see their own (empty) history
+                $assignedUserId = $currentUser->assigned_user_id ?? $currentUser->id;
+                $query->where('user_id', $assignedUserId);
+            }
         }
 
         if (!empty($filters['search'])) {

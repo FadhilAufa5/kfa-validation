@@ -13,7 +13,8 @@ class UsersController extends Controller
 {
     public function index(Request $request)
     {
-        $query = User::select('id', 'name', 'email', 'role', 'created_at')
+        $query = User::with('assignedUser:id,name')
+            ->select('id', 'name', 'email', 'role', 'assigned_user_id', 'created_at')
             ->orderBy('created_at', 'desc');
 
         // Filter berdasarkan search (nama atau email)
@@ -55,10 +56,17 @@ class UsersController extends Controller
             return Cache::has('user-is-online-' . $user->id);
         })->count();
 
+        // Get all users for visitor assignment dropdown (only non-visitor users)
+        $assignableUsers = User::where('role', '!=', 'visitor')
+            ->select('id', 'name', 'email', 'role')
+            ->orderBy('name')
+            ->get();
+
         return Inertia::render('users/index', [
             'users' => $users,
             'availableRoles' => $availableRoles,
             'allRoles' => $allRoles,
+            'assignableUsers' => $assignableUsers,
             'filters' => [
                 'search' => $request->search ?? '',
                 'role' => $request->role ?? '',
@@ -87,9 +95,10 @@ class UsersController extends Controller
         'email' => 'required|email|unique:users,email,' . $user->id,
         'role' => 'required|string',
         'role_id' => 'nullable|exists:roles,id',
+        'assigned_user_id' => 'nullable|exists:users,id',
     ]);
 
-    $oldData = $user->only('name', 'email', 'role', 'role_id');
+    $oldData = $user->only('name', 'email', 'role', 'role_id', 'assigned_user_id');
     
     // Update user data
     $updateData = $request->only('name', 'email', 'role');
@@ -103,6 +112,11 @@ class UsersController extends Controller
         if ($role) {
             $updateData['role'] = $role->name;
         }
+    }
+
+    // If assigned_user_id is provided, update it (for visitors)
+    if ($request->has('assigned_user_id')) {
+        $updateData['assigned_user_id'] = $request->assigned_user_id;
     }
     
     $user->update($updateData);
@@ -125,6 +139,7 @@ public function store(Request $request)
         'email' => 'required|email|unique:users,email',
         'role' => 'required|string',
         'role_id' => 'nullable|exists:roles,id',
+        'assigned_user_id' => 'nullable|exists:users,id',
     ];
 
     // Only require password for super_admin
@@ -150,6 +165,11 @@ public function store(Request $request)
     // Add role_id if provided
     if (isset($validated['role_id'])) {
         $userData['role_id'] = $validated['role_id'];
+    }
+
+    // Add assigned_user_id if provided (for visitors)
+    if (isset($validated['assigned_user_id'])) {
+        $userData['assigned_user_id'] = $validated['assigned_user_id'];
     }
 
     $user = User::create($userData);

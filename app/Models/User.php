@@ -25,6 +25,7 @@ class User extends Authenticatable
         'password',
         'role',
         'role_id',
+        'assigned_user_id',
         'email_verified_at',
         'created_by_admin',
     ];
@@ -58,6 +59,11 @@ class User extends Authenticatable
     public function roleModel(): BelongsTo
     {
         return $this->belongsTo(Role::class, 'role_id');
+    }
+
+    public function assignedUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
     public function hasPermission(string $permissionName): bool
