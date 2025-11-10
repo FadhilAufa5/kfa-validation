@@ -588,7 +588,7 @@ class ValidationDataService
 
     public function getValidationHistory(array $filters): array
     {
-        $query = Validation::query();
+        $query = Validation::with('user');
 
         if (!empty($filters['document_type'])) {
             $query->where('document_type', $filters['document_type']);
@@ -599,7 +599,10 @@ class ValidationDataService
                 $q->where('file_name', 'LIKE', "%{$filters['search']}%")
                     ->orWhere('role', 'LIKE', "%{$filters['search']}%")
                     ->orWhere('document_type', 'LIKE', "%{$filters['search']}%")
-                    ->orWhere('document_category', 'LIKE', "%{$filters['search']}%");
+                    ->orWhere('document_category', 'LIKE', "%{$filters['search']}%")
+                    ->orWhereHas('user', function ($userQuery) use ($filters) {
+                        $userQuery->where('name', 'LIKE', "%{$filters['search']}%");
+                    });
             });
         }
 
@@ -628,7 +631,7 @@ class ValidationDataService
 
             return [
                 'id' => $validation->id,
-                'user' => $validation->role,
+                'user' => $validation->user ? $validation->user->name : $validation->role,
                 'fileName' => $validation->file_name,
                 'documentCategory' => $validation->document_category,
                 'uploadTime' => $validation->created_at->format('Y-m-d H:i'),

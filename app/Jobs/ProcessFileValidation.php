@@ -3,9 +3,11 @@
 namespace App\Jobs;
 
 use App\Models\Validation;
+use App\Models\User;
 use App\Services\MappedFileService;
 use App\Services\ValidationService;
 use App\Services\ActivityLogger;
+use App\Notifications\ValidationCompletedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -122,6 +124,19 @@ class ProcessFileValidation implements ShouldQueue
                     ],
                     'completed_at' => now()->toISOString()
                 ]);
+
+                // Send notification to user
+                if ($this->userId) {
+                    $user = User::find($this->userId);
+                    if ($user) {
+                        $user->notify(new ValidationCompletedNotification($validation));
+                        Log::info('Validation completed notification sent', [
+                            'validation_id' => $this->validationId,
+                            'user_id' => $this->userId,
+                            'user_email' => $user->email
+                        ]);
+                    }
+                }
             }
 
             Log::info('Async file validation completed successfully', [

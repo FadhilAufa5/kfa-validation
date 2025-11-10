@@ -117,6 +117,30 @@ Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
     Route::post('/validation-setting/upload-im-data', [App\Http\Controllers\ValidationSettingController::class, 'uploadImData'])->name('validation-setting.upload-im-data');
 });
 
+// Permission Management (Super Admin Only)
+Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
+    Route::get('/permissions', [App\Http\Controllers\PermissionController::class, 'index'])->name('permissions.index');
+    
+    // Role management
+    Route::post('/permissions/roles', [App\Http\Controllers\PermissionController::class, 'storeRole'])->name('permissions.roles.store');
+    Route::put('/permissions/roles/{role}', [App\Http\Controllers\PermissionController::class, 'updateRole'])->name('permissions.roles.update');
+    Route::delete('/permissions/roles/{role}', [App\Http\Controllers\PermissionController::class, 'destroyRole'])->name('permissions.roles.destroy');
+    
+    // Permission management
+    Route::post('/permissions/permissions', [App\Http\Controllers\PermissionController::class, 'storePermission'])->name('permissions.permissions.store');
+    Route::put('/permissions/permissions/{permission}', [App\Http\Controllers\PermissionController::class, 'updatePermission'])->name('permissions.permissions.update');
+    Route::delete('/permissions/permissions/{permission}', [App\Http\Controllers\PermissionController::class, 'destroyPermission'])->name('permissions.permissions.destroy');
+});
+
+// Notifications (All authenticated users)
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/notifications', [App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('/notifications/unread-count', [App\Http\Controllers\NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
+    Route::post('/notifications/{id}/mark-as-read', [App\Http\Controllers\NotificationController::class, 'markAsRead'])->name('notifications.mark-as-read');
+    Route::post('/notifications/mark-all-as-read', [App\Http\Controllers\NotificationController::class, 'markAllAsRead'])->name('notifications.mark-all-as-read');
+    Route::delete('/notifications/{id}', [App\Http\Controllers\NotificationController::class, 'destroy'])->name('notifications.destroy');
+});
+
 // Include additional route files
 require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';

@@ -37,14 +37,23 @@ interface Statistics {
   offline: number;
 }
 
+interface RoleType {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+}
+
 export default function UsersIndex({ 
   users, 
-  availableRoles, 
+  availableRoles,
+  allRoles,
   filters,
   statistics
 }: { 
   users: PaginatedUsers; 
   availableRoles: string[];
+  allRoles: RoleType[];
   filters: { search?: string; role?: string };
   statistics: Statistics;
 }) {
@@ -314,8 +323,8 @@ export default function UsersIndex({
       </div>
 
       {/* Modal Tambah & Edit */}
-      <AddUserDialog open={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onUserAdded={fetchUsers} />
-      {selectedUser && <EditUserDialog open={isEditModalOpen} onClose={() => { setSelectedUser(null); setIsEditModalOpen(false); }} user={selectedUser} />}
+      <AddUserDialog open={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onUserAdded={fetchUsers} roles={allRoles} />
+      {selectedUser && <EditUserDialog open={isEditModalOpen} onClose={() => { setSelectedUser(null); setIsEditModalOpen(false); }} user={selectedUser} roles={allRoles} />}
 
       {/* Modal Hapus */}
       <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>

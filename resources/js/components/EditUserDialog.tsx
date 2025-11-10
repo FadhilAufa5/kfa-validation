@@ -5,8 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { route } from "ziggy-js";
+
+interface RoleType {
+  id: number;
+  name: string;
+  display_name: string;
+  description: string | null;
+}
 
 interface EditUserDialogProps {
   open: boolean;
@@ -17,21 +25,30 @@ interface EditUserDialogProps {
     email: string;
     role: string;
   };
+  roles: RoleType[];
 }
 
-export default function EditUserDialog({ open, onClose, user }: EditUserDialogProps) {
+export default function EditUserDialog({ open, onClose, user, roles }: EditUserDialogProps) {
   const [form, setForm] = useState({
     name: user.name,
     email: user.email,
     role: user.role,
+    role_id: null as number | null,
   });
   const [errors, setErrors] = useState({
     email: "",
   });
 
   useEffect(() => {
-    setForm({ name: user.name, email: user.email, role: user.role });
-  }, [user]);
+    // Find the role_id based on the current role name
+    const currentRole = roles.find(r => r.name === user.role);
+    setForm({ 
+      name: user.name, 
+      email: user.email, 
+      role: user.role,
+      role_id: currentRole?.id || null,
+    });
+  }, [user, roles]);
 
   const handleSave = () => {
     if (!form.name || !form.email) {
@@ -88,18 +105,44 @@ export default function EditUserDialog({ open, onClose, user }: EditUserDialogPr
           <div>
             <Label>Role</Label>
             <Select
-              value={form.role}
-              onValueChange={(value) => setForm({ ...form, role: value })}
+              value={form.role_id?.toString() || ""}
+              onValueChange={(value) => {
+                const selectedRole = roles.find(r => r.id === parseInt(value));
+                if (selectedRole) {
+                  setForm({ 
+                    ...form, 
+                    role: selectedRole.name,
+                    role_id: selectedRole.id,
+                  });
+                }
+              }}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Pilih role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="user">User</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="super-admin">Super Admin</SelectItem>
+                {roles.map((role) => (
+                  <SelectItem key={role.id} value={role.id.toString()}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{role.display_name}</span>
+                      {role.name === 'super_admin' && (
+                        <Badge variant="secondary" className="text-xs">Admin</Badge>
+                      )}
+                    </div>
+                    {role.description && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {role.description}
+                      </p>
+                    )}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {form.role_id && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Selected: {roles.find(r => r.id === form.role_id)?.display_name}
+              </p>
+            )}
           </div>
         </div>
 

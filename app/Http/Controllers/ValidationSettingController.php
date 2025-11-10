@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ValidationSetting;
 use App\Models\ImDataInfo;
+use App\Models\ActivityLog;
 use App\Jobs\ProcessImDataUpload;
 use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
@@ -18,8 +19,25 @@ class ValidationSettingController extends Controller
         $currentTolerance = ValidationSetting::get('rounding_tolerance', 1000.01);
         $imDataInfo = ImDataInfo::getAllInfo();
 
+        // Get the last tolerance update from activity logs
+        $lastToleranceUpdate = ActivityLog::where('action', 'Update Tolerance')
+            ->where('entity_type', 'ValidationSetting')
+            ->where('entity_id', 'rounding_tolerance')
+            ->latest()
+            ->first();
+
+        $toleranceUpdateInfo = null;
+        if ($lastToleranceUpdate) {
+            $toleranceUpdateInfo = [
+                'last_updated_at' => $lastToleranceUpdate->created_at->format('Y-m-d H:i:s'),
+                'last_updated_by' => $lastToleranceUpdate->user_name,
+                'last_updated_human' => $lastToleranceUpdate->created_at->diffForHumans(),
+            ];
+        }
+
         return Inertia::render('validation-setting/index', [
             'currentTolerance' => $currentTolerance,
+            'toleranceUpdateInfo' => $toleranceUpdateInfo,
             'imDataInfo' => $imDataInfo,
         ]);
     }

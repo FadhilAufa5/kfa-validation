@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { HandCoins, History, LayoutGrid, Store, Users, Activity, LayoutDashboard, Settings } from 'lucide-react';
+import { HandCoins, History, LayoutGrid, Store, Users, Activity, LayoutDashboard, Settings, Shield } from 'lucide-react';
 
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
@@ -62,6 +62,11 @@ const uyNavItems: NavItem[] = [
         title: 'User Management',
         href: '/users',
         icon: Users,
+    },
+    {
+        title: 'Permission Management',
+        href: '/permissions',
+        icon: Shield,
     },
     {
         title: 'Log Aktivitas',

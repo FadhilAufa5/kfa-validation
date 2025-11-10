@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Role;
 use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -35,8 +36,18 @@ class UsersController extends Controller
             return $user;
         });
 
-        // Get available roles untuk filter dropdown
+        // Get available roles untuk filter dropdown (from old role field)
         $availableRoles = User::select('role')->distinct()->pluck('role');
+
+        // Get all roles from permission system
+        $allRoles = Role::select('id', 'name', 'display_name', 'description')->get()->map(function ($role) {
+            return [
+                'id' => $role->id,
+                'name' => $role->name,
+                'display_name' => $role->display_name,
+                'description' => $role->description,
+            ];
+        });
 
         // Get statistics untuk semua users (tanpa filter)
         $totalUsers = User::count();
@@ -47,6 +58,7 @@ class UsersController extends Controller
         return Inertia::render('users/index', [
             'users' => $users,
             'availableRoles' => $availableRoles,
+            'allRoles' => $allRoles,
             'filters' => [
                 'search' => $request->search ?? '',
                 'role' => $request->role ?? '',
@@ -74,16 +86,32 @@ class UsersController extends Controller
         'name' => 'required|string|max:255',
         'email' => 'required|email|unique:users,email,' . $user->id,
         'role' => 'required|string',
+        'role_id' => 'nullable|exists:roles,id',
     ]);
 
-    $oldData = $user->only('name', 'email', 'role');
-    $user->update($request->only('name', 'email', 'role'));
+    $oldData = $user->only('name', 'email', 'role', 'role_id');
+    
+    // Update user data
+    $updateData = $request->only('name', 'email', 'role');
+    
+    // If role_id is provided, update it
+    if ($request->has('role_id') && $request->role_id) {
+        $updateData['role_id'] = $request->role_id;
+        
+        // Also update the role string field to match the role name
+        $role = Role::find($request->role_id);
+        if ($role) {
+            $updateData['role'] = $role->name;
+        }
+    }
+    
+    $user->update($updateData);
 
     ActivityLogger::logUpdate(
         'User',
         $user,
         "Memperbarui data user {$user->name}",
-        ['old' => $oldData, 'new' => $request->only('name', 'email', 'role')]
+        ['old' => $oldData, 'new' => $updateData]
     );
 
     return redirect()->back()->with('success', 'User berhasil diperbarui.');
@@ -91,25 +119,53 @@ class UsersController extends Controller
 
 public function store(Request $request)
 {
-   
-    $validated = $request->validate([
+    // Password is only required for super_admin role
+    $rules = [
         'name' => 'required|string|max:255',
         'email' => 'required|email|unique:users,email',
         'role' => 'required|string',
-        'password' => 'required|string|min:6',
-    ]);
+        'role_id' => 'nullable|exists:roles,id',
+    ];
 
-  
-    $user = User::create([
+    // Only require password for super_admin
+    if ($request->role === 'super_admin') {
+        $rules['password'] = 'required|string|min:6';
+    }
+
+    $validated = $request->validate($rules);
+
+    // Generate random password for non-super admin users
+    $password = isset($validated['password']) 
+        ? $validated['password'] 
+        : \Illuminate\Support\Str::random(16);
+
+    $userData = [
         'name' => $validated['name'],
         'email' => $validated['email'],
         'role' => $validated['role'],
-        'password' => bcrypt($validated['password']),
-    ]);
+        'password' => bcrypt($password),
+        'created_by_admin' => true,
+    ];
+
+    // Add role_id if provided
+    if (isset($validated['role_id'])) {
+        $userData['role_id'] = $validated['role_id'];
+    }
+
+    $user = User::create($userData);
+
+    // TODO: Send email with password to non-super admin users
+    if (!isset($validated['password'])) {
+        // For now, log the generated password
+        \Log::info('User created with auto-generated password', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'password' => $password, // In production, send via email instead of logging
+        ]);
+    }
 
     ActivityLogger::logCreate('User', $user, "Menambahkan user baru: {$user->name}");
 
-    
     return redirect()->route('users.index')->with('success', 'User berhasil ditambahkan!');
 }
 
