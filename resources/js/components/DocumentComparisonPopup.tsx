@@ -116,13 +116,31 @@ const renderDocumentData = (data: unknown[] | null) => {
         }
 
         const stringValue = String(value).trim();
+        const lowerHeader = header.toLowerCase().trim();
+
+        // Check if this is a date field (Bulan column)
+        if (lowerHeader === 'bulan' || lowerHeader.includes('date') || lowerHeader.includes('tanggal')) {
+            // Handle ISO date format (e.g., '2025-05-01T00:00:00.000000Z')
+            if (stringValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+                try {
+                    const dateObj = new Date(stringValue);
+                    return { value: dateObj.toISOString().split('T')[0] };
+                } catch (e) {
+                    // If parsing fails, return as is
+                }
+            }
+            // If already in Y-m-d format, return as is
+            if (stringValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                return { value: stringValue };
+            }
+        }
+
         if (stringValue.startsWith('Rp') || stringValue.includes('IDR')) {
             return { value: stringValue };
         }
 
         const parsedValue = parseFloat(stringValue.replace(/[^\d.-]/g, ''));
         let isFinancialField = false;
-        const lowerHeader = header.toLowerCase().trim();
 
         if (
             !isNaN(parsedValue) &&

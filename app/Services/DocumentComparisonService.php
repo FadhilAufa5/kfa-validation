@@ -84,7 +84,22 @@ class DocumentComparisonService
             
             // Map database columns back to file column names
             foreach ($mapping as $dbColumn => $fileColumn) {
-                $row[$fileColumn] = $record->{$dbColumn};
+                $value = $record->{$dbColumn};
+                
+                // Format date fields to Y-m-d format
+                if ($dbColumn === 'date' && $value instanceof \DateTimeInterface) {
+                    $value = $value->format('Y-m-d');
+                } elseif ($dbColumn === 'date' && is_string($value)) {
+                    // Handle string dates
+                    try {
+                        $dateObj = new \DateTime($value);
+                        $value = $dateObj->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        // Keep original value if date parsing fails
+                    }
+                }
+                
+                $row[$fileColumn] = $value;
             }
             
             // Add connector and sum field values
