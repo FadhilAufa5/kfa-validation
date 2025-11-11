@@ -18,8 +18,8 @@ export default function TopDiscrepanciesChart({
         .sort((a, b) => Math.abs(b.discrepancy_value) - Math.abs(a.discrepancy_value))
         .slice(0, topCount);
 
-    const maxValue = Math.max(
-        ...allInvalidGroups.map((g) => Math.abs(g.discrepancy_value)),
+    const maxValue = allInvalidGroups.reduce(
+        (max, g) => Math.max(max, Math.abs(g.discrepancy_value)),
         1,
     );
 
