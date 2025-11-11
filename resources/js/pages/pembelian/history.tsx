@@ -1,299 +1,722 @@
-"use client";
+'use client';
 
-import { Link, Head, router } from "@inertiajs/react";
-import { useState, useEffect } from "react";
-import AppLayout from "@/layouts/app-layout";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { CardContent } from "@/components/ui/card";
+import { ReportDialog } from '@/components/ReportDialog';
+import { Button } from '@/components/ui/button';
+import { CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Folder, Plus, Eye, Search } from "lucide-react";
-import { type BreadcrumbItem } from "@/types";
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import { ViewReportDialog } from '@/components/ViewReportDialog';
+import AppLayout from '@/layouts/app-layout';
+import { type BreadcrumbItem } from '@/types';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import axios from 'axios';
+import {
+    ChevronLeft,
+    ChevronRight,
+    ChevronsLeft,
+    ChevronsRight,
+    Eye,
+    Flag,
+    Folder,
+    Loader2,
+    Plus,
+    Search,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+
+interface ValidationLog {
+    id: number;
+    user: string;
+    fileName: string;
+    documentCategory: string;
+    uploadTime: string;
+    score: string;
+    status: 'Valid' | 'Invalid' | 'Processing' | 'Failed';
+    processing_status?: string;
+    processing_details?: any;
+    report?: {
+        id: number;
+        status: 'pending' | 'accepted' | 'revoked';
+        report_type: 'custom' | 'wrong_document_type' | 'dirty_data';
+        report_message?: string;
+    } | null;
+}
 
 export const CircularScore = ({ score }: { score: string }) => {
-  const numericScore = parseInt(score.replace("%", ""), 10);
-  const radius = 20;
-  const circumference = 2 * Math.PI * radius;
-  const [progress, setProgress] = useState(0);
+    const numericScore = parseInt(score.replace('%', ''), 10);
+    const radius = 20;
+    const circumference = 2 * Math.PI * radius;
+    const [progress, setProgress] = useState(0);
 
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      setProgress((numericScore / 100) * circumference);
-    }, 150);
-    return () => clearTimeout(timeout);
-  }, [numericScore, circumference]);
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            setProgress((numericScore / 100) * circumference);
+        }, 150);
+        return () => clearTimeout(timeout);
+    }, [numericScore, circumference]);
 
-  const isComplete = numericScore === 100;
+    const isComplete = numericScore === 100;
+    const isHighScore = numericScore > 75 && numericScore < 100;
 
-  return (
-    <div className="relative flex items-center justify-center w-12 h-12">
-      <svg className="rotate-[-90deg]" width="50" height="50">
-        {/* Background Track */}
-        <circle
-          cx="25"
-          cy="25"
-          r={radius}
-          strokeWidth="4"
-          fill="none"
-          strokeDasharray="3 4"
-          className="stroke-gray-300 dark:stroke-gray-700"
-        />
-        {/* Progress Line */}
-        <circle
-          cx="25"
-          cy="25"
-          r={radius}
-          strokeWidth="4"
-          fill="none"
-          className={`transition-all duration-700 ease-out ${
-            isComplete
-              ? "stroke-blue-500 dark:stroke-blue-400"
-              : "stroke-red-400 dark:stroke-red-400"
-          }`}
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference - progress}
-          strokeLinecap="round"
-        />
-      </svg>
-      <span
-        className={`absolute text-xs font-semibold ${
-          isComplete
-            ? "text-blue-600 dark:text-blue-400"
-            : "text-gray-600 dark:text-gray-300"
-        }`}
-      >
-        {numericScore}%
-      </span>
-    </div>
-  );
+    return (
+        <div className="relative flex h-12 w-12 items-center justify-center">
+            <svg className="rotate-[-90deg]" width="50" height="50">
+                {/* Background Track */}
+                <circle
+                    cx="25"
+                    cy="25"
+                    r={radius}
+                    strokeWidth="4"
+                    fill="none"
+                    strokeDasharray="3 4"
+                    className="stroke-gray-300 dark:stroke-gray-700"
+                />
+                {/* Progress Line */}
+                <circle
+                    cx="25"
+                    cy="25"
+                    r={radius}
+                    strokeWidth="4"
+                    fill="none"
+                    className={`transition-all duration-700 ease-out ${
+                        isComplete
+                            ? 'stroke-blue-500 dark:stroke-blue-400'
+                            : isHighScore
+                              ? 'stroke-yellow-400 dark:stroke-yellow-300'
+                              : 'stroke-red-400 dark:stroke-red-400'
+                    }`}
+                    strokeDasharray={circumference}
+                    strokeDashoffset={circumference - progress}
+                    strokeLinecap="round"
+                />
+            </svg>
+            <span
+                className={`absolute text-xs font-semibold ${
+                    isComplete
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : // : isHighScore
+                          // ? "text-yellow-600 dark:text-yellow-300"
+                          'text-gray-600 dark:text-gray-300'
+                }`}
+            >
+                {numericScore}%
+            </span>
+        </div>
+    );
 };
 
 export default function ValidationLogPage() {
-  const logs = [
-    {
-      id: 1,
-      user: "Busdev",
-      fileType: "CSV",
-      fileName: "data_pembelian.csv",
-      role: "Admin",
-      uploadTime: "2025-10-14 10:25",
-      score: "50%",
-      status: "Invalid",
-    },
-    {
-      id: 2,
-      user: "Legal",
-      fileType: "XLSX",
-      fileName: "data_pembelian_08_25.xlsx",
-      role: "Admin",
-      uploadTime: "2025-10-15 09:42",
-      score: "100%",
-      status: "Valid",
-    },
-  ];
+    const { auth } = usePage().props as any;
+    const isSuperAdmin = auth?.user?.role === 'super_admin';
 
-  const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"All" | "Valid" | "Invalid">(
-    "All"
-  );
+    const [logs, setLogs] = useState<ValidationLog[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
+    const [filterStatus, setFilterStatus] = useState<
+        'All' | 'Valid' | 'Invalid' | 'Processing' | 'Failed'
+    >('All');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pagination, setPagination] = useState({
+        current_page: 1,
+        last_page: 1,
+        per_page: 10,
+        total: 0,
+        from: 0,
+        to: 0,
+    });
+    const [previousProcessingIds, setPreviousProcessingIds] = useState<
+        number[]
+    >([]);
 
-  const filteredLogs = logs.filter(
-    (item) =>
-      (filterStatus === "All" || item.status === filterStatus) &&
-      (item.user.toLowerCase().includes(search.toLowerCase()) ||
-        item.fileName.toLowerCase().includes(search.toLowerCase()) ||
-        item.role.toLowerCase().includes(search.toLowerCase()))
-  );
+    // Report dialog states
+    const [reportDialogOpen, setReportDialogOpen] = useState(false);
+    const [selectedLog, setSelectedLog] = useState<ValidationLog | null>(null);
 
-  const countByStatus = {
-    All: logs.length,
-    Valid: logs.filter((i) => i.status === "Valid").length,
-    Invalid: logs.filter((i) => i.status === "Invalid").length,
-  };
+    // View report dialog states
+    const [viewReportDialogOpen, setViewReportDialogOpen] = useState(false);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Valid":
-        return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-      case "Invalid":
-        return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
-      default:
-        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
-    }
-  };
+    // Request notification permission on mount
+    useEffect(() => {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }, []);
 
-  const breadcrumbs: BreadcrumbItem[] = [
-    { title: "Pembelian", href: "/pembelian" },
-    { title: "History Pembelian", href: "/pembelian" },
-  ];
+    // Fetch data from API
+    useEffect(() => {
+        setCurrentPage(1); // Reset to first page when search or filter changes
+    }, [search, filterStatus]);
 
-  return (
-    <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="Validation Logs" />
+    useEffect(() => {
+        fetchLogs();
+    }, [search, filterStatus, currentPage]);
 
-      <div className="flex flex-col gap-4 p-4 overflow-x-auto">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Folder className="text-blue-500 dark:text-blue-400" />
-              Log Proses Validasi
-            </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Riwayat proses validasi dokumen yang telah diunggah.
-            </p>
-          </div>
+    // Efficient polling for processing jobs only
+    useEffect(() => {
+        const processingIds = logs
+            .filter((log) => log.status === 'Processing')
+            .map((log) => log.id);
 
-          <div className="flex gap-3 w-full md:w-auto">
-            <Link href="/penjualan">
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow-md">
-                <Plus className="w-4 h-4 mr-2" /> Add Process
-              </Button>
-            </Link>
-          </div>
-        </div>
+        if (processingIds.length === 0) {
+            return; // No processing jobs, no need to poll
+        }
 
-        {/* Search & Filter */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-3">
-          <div className="relative w-full md:w-1/3">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
-            <Input
-              type="text"
-              placeholder="Cari..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"
-            />
-          </div>
+        const interval = setInterval(async () => {
+            try {
+                // Only check status of processing jobs, not entire table
+                const response = await axios.post(
+                    '/pembelian/history/check-processing',
+                    { ids: processingIds },
+                );
 
-          <div className="flex flex-wrap gap-2 justify-center">
-            {(["All", "Valid", "Invalid"] as const).map((status) => {
-              const isActive = filterStatus === status;
-              const colorClass = (() => {
-                if (status === "All")
-                  return isActive
-                    ? "bg-blue-600 hover:bg-blue-700 text-white"
-                    : "border-gray-300 text-gray-700 dark:text-gray-200 dark:border-gray-700";
-                if (status === "Valid")
-                  return isActive
-                    ? "bg-green-600 hover:bg-green-700 text-white"
-                    : "border-green-300 text-green-700 dark:text-green-400 dark:border-green-700";
-                if (status === "Invalid")
-                  return isActive
-                    ? "bg-red-600 hover:bg-red-700 text-white"
-                    : "border-red-300 text-red-700 dark:text-red-400 dark:border-red-700";
-                return "";
-              })();
+                const updates = response.data;
 
-              return (
-                <Button
-                  key={status}
-                  variant={isActive ? "default" : "outline"}
-                  className={`flex items-center gap-2 text-sm transition-colors duration-200 ${colorClass}`}
-                  onClick={() => setFilterStatus(status)}
-                >
-                  {status}
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      isActive
-                        ? "bg-white/20 text-white"
-                        : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
-                    }`}
-                  >
-                    {countByStatus[status]}
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-        </div>
+                if (updates.length > 0) {
+                    // Update only the changed items in the logs state
+                    setLogs((prevLogs) =>
+                        prevLogs.map((log) => {
+                            const update = updates.find(
+                                (u: {
+                                    id: number;
+                                    status: string;
+                                    score: string;
+                                }) => u.id === log.id,
+                            );
+                            if (update && update.status !== log.status) {
+                                return { ...log, ...update };
+                            }
+                            return log;
+                        }),
+                    );
 
-        {/* Table */}
-        <CardContent className="p-0 border border-sidebar-border/70 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700">
-            <Table className="min-w-[850px]">
-              <TableHeader>
-                <TableRow className="bg-gray-200/60 dark:bg-gray-900/60">
-                  {[
-                    "User",
-                    "File Type",
-                    "File Name",
-                    "Role",
-                    "Upload Time",
-                    "Validation Score",
-                    "Validation Status",
-                    "Action",
-                  ].map((head) => (
-                    <TableHead
-                      key={head}
-                      className="font-semibold text-gray-700 dark:text-gray-200 text-sm px-5 py-3 border-b border-gray-250 dark:border-gray-800"
-                    >
-                      {head}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
+                    // If any job completed, refresh the full list to get accurate counts
+                    const hasCompletedJobs = updates.some(
+                        (u: { status: string }) => u.status !== 'Processing',
+                    );
+                    if (hasCompletedJobs) {
+                        // Delay refresh slightly to ensure backend is fully updated
+                        setTimeout(() => fetchLogs(), 1000);
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking processing status:', error);
+            }
+        }, 10000); // Check every 10 seconds (more frequent since it's lightweight)
 
-              <TableBody>
-                {filteredLogs.length > 0 ? (
-                  filteredLogs.map((item) => (
-                    <TableRow
-                      key={item.id}
-                      className="even:bg-gray-50 odd:bg-white dark:even:bg-gray-900/30 dark:odd:bg-transparent transition-colors"
-                    >
-                      <TableCell>{item.user}</TableCell>
-                      <TableCell>{item.fileType}</TableCell>
-                      <TableCell>{item.fileName}</TableCell>
-                      <TableCell>{item.role}</TableCell>
-                      <TableCell>{item.uploadTime}</TableCell>
-                      <TableCell>
-                        <CircularScore score={item.score} />
-                      </TableCell>
-                      <TableCell>
-                        <span
-                          className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                            item.status
-                          )}`}
-                        >
-                          {item.status}
-                        </span>
-                      </TableCell>
+        return () => clearInterval(interval);
+    }, [logs]);
 
-                      {/* ✅ Perbaikan di sini */}
-                      <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex items-center text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                        onClick={() => router.visit(`/pembelian/${item.id}`)}
-                      >
-                        <Eye className="w-4 h-4 mr-1" /> Detail
-                      </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={8}
-                      className="text-center text-gray-500 dark:text-gray-400 py-8 text-sm"
-                    >
-                      Tidak ada hasil untuk pencarian ini.
-                    </TableCell>
-                  </TableRow>
+    // Track completed jobs and show notifications
+    useEffect(() => {
+        const currentProcessingIds = logs
+            .filter((log) => log.status === 'Processing')
+            .map((log) => log.id);
+
+        // Find jobs that were processing but are now completed
+        const completedIds = previousProcessingIds.filter(
+            (id) => !currentProcessingIds.includes(id),
+        );
+
+        if (completedIds.length > 0 && previousProcessingIds.length > 0) {
+            completedIds.forEach((id) => {
+                const completedLog = logs.find((log) => log.id === id);
+                if (completedLog) {
+                    showNotification(completedLog);
+                }
+            });
+        }
+
+        setPreviousProcessingIds(currentProcessingIds);
+    }, [logs]);
+
+    const showNotification = (log: ValidationLog) => {
+        if ('Notification' in window && Notification.permission === 'granted') {
+            const title = 'Validation Complete';
+            const body = `${log.fileName} - ${log.status} (Score: ${log.score})`;
+            const icon =
+                log.status === 'Valid'
+                    ? '✅'
+                    : log.status === 'Invalid'
+                      ? '❌'
+                      : '⚠️';
+
+            const notification = new Notification(title, {
+                body: body,
+                icon: '/favicon.ico',
+                badge: '/favicon.ico',
+                tag: `validation-${log.id}`,
+            });
+
+            notification.onclick = () => {
+                window.focus();
+                router.visit(`/pembelian/${log.id}`);
+                notification.close();
+            };
+        }
+    };
+
+    const fetchLogs = async () => {
+        setLoading(true);
+        try {
+            const response = await axios.get('/pembelian/history/data', {
+                params: {
+                    search,
+                    status: filterStatus,
+                    page: currentPage,
+                },
+            });
+            setLogs(response.data.data);
+            setPagination(response.data.pagination);
+        } catch (error) {
+            console.error('Error fetching validation logs:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleOpenReportDialog = (log: ValidationLog) => {
+        setSelectedLog(log);
+        setReportDialogOpen(true);
+    };
+
+    const handleOpenViewReportDialog = (log: ValidationLog) => {
+        setSelectedLog(log);
+        setViewReportDialogOpen(true);
+    };
+
+    const countByStatus = {
+        All: pagination.total,
+        Valid: logs.filter((i) => i.status === 'Valid').length,
+        Invalid: logs.filter((i) => i.status === 'Invalid').length,
+        Processing: logs.filter((i) => i.status === 'Processing').length,
+        Failed: logs.filter((i) => i.status === 'Failed').length,
+    };
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'Valid':
+                return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+            case 'Invalid':
+                return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+            case 'Processing':
+                return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+            case 'Failed':
+                return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
+            default:
+                return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+        }
+    };
+
+    const breadcrumbs: BreadcrumbItem[] = [
+        { title: 'Pembelian', href: '/pembelian' },
+        { title: 'History Pembelian', href: '/history/pembelian' },
+    ];
+
+    return (
+        <AppLayout breadcrumbs={breadcrumbs}>
+            <Head title="Validation Logs" />
+
+            <div className="flex flex-col gap-4 overflow-x-auto p-4">
+                {/* Header */}
+                <div className="mb-6 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+                    <div>
+                        <h1 className="flex items-center gap-2 text-2xl font-bold">
+                            <Folder className="text-blue-500 dark:text-blue-400" />
+                            Log Proses Validasi
+                        </h1>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                            Riwayat proses validasi dokumen yang telah diunggah.
+                        </p>
+                    </div>
+
+                    <div className="flex w-full gap-3 md:w-auto">
+                        <Link href="/pembelian">
+                            <Button className="bg-blue-600 text-white shadow-md hover:bg-blue-700">
+                                <Plus className="mr-2 h-4 w-4" /> Add Process
+                            </Button>
+                        </Link>
+                    </div>
+                </div>
+
+                {/* Search & Filter */}
+                <div className="mb-4 flex flex-col items-center justify-between gap-3 md:flex-row">
+                    <div className="relative w-full md:w-1/3">
+                        <Search className="absolute top-2.5 left-3 h-4 w-4 text-gray-400" />
+                        <Input
+                            type="text"
+                            placeholder="Cari..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="w-full border-gray-200 bg-white pl-9 dark:border-gray-800 dark:bg-gray-900"
+                        />
+                    </div>
+
+                    <div className="flex flex-wrap justify-center gap-2">
+                        {(
+                            [
+                                'All',
+                                'Valid',
+                                'Invalid',
+                                'Processing',
+                                'Failed',
+                            ] as const
+                        ).map((status) => {
+                            const isActive = filterStatus === status;
+                            const colorClass = (() => {
+                                if (status === 'All')
+                                    return isActive
+                                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                        : 'border-gray-300 text-gray-700 dark:text-gray-200 dark:border-gray-700';
+                                if (status === 'Valid')
+                                    return isActive
+                                        ? 'bg-green-600 hover:bg-green-700 text-white'
+                                        : 'border-green-300 text-green-700 dark:text-green-400 dark:border-green-700';
+                                if (status === 'Invalid')
+                                    return isActive
+                                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                                        : 'border-red-300 text-red-700 dark:text-red-400 dark:border-red-700';
+                                if (status === 'Processing')
+                                    return isActive
+                                        ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                                        : 'border-blue-300 text-blue-700 dark:text-blue-400 dark:border-blue-700';
+                                if (status === 'Failed')
+                                    return isActive
+                                        ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                                        : 'border-orange-300 text-orange-700 dark:text-orange-400 dark:border-orange-700';
+                                return '';
+                            })();
+
+                            return (
+                                <Button
+                                    key={status}
+                                    variant={isActive ? 'default' : 'outline'}
+                                    className={`flex items-center gap-2 text-sm transition-colors duration-200 ${colorClass}`}
+                                    onClick={() => setFilterStatus(status)}
+                                >
+                                    {status}
+                                    <span
+                                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                            isActive
+                                                ? 'bg-white/20 text-white'
+                                                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                        }`}
+                                    >
+                                        {countByStatus[status]}
+                                    </span>
+                                </Button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Table */}
+                <CardContent className="overflow-hidden rounded-xl border border-sidebar-border/70 p-0">
+                    <div className="scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 overflow-x-auto">
+                        <Table className="min-w-[850px]">
+                            <TableHeader>
+                                <TableRow className="bg-gray-200/60 dark:bg-gray-900/60">
+                                    {[
+                                        'User',
+                                        'File Name',
+                                        'Document Category',
+                                        'Upload Time',
+                                        'Validation Score',
+                                        'Validation Status',
+                                        'Action',
+                                    ].map((head) => (
+                                        <TableHead
+                                            key={head}
+                                            className="border-gray-250 border-b px-5 py-3 text-sm font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200"
+                                        >
+                                            {head}
+                                        </TableHead>
+                                    ))}
+                                </TableRow>
+                            </TableHeader>
+
+                            <TableBody>
+                                {loading ? (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={7}
+                                            className="py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+                                        >
+                                            Loading...
+                                        </TableCell>
+                                    </TableRow>
+                                ) : logs.length > 0 ? (
+                                    logs.map((item) => (
+                                        <TableRow
+                                            key={item.id}
+                                            className={`transition-colors ${
+                                                item.report?.status ===
+                                                'pending'
+                                                    ? 'bg-gray-100 opacity-50 dark:bg-gray-800/50'
+                                                    : 'odd:bg-white even:bg-gray-50 dark:odd:bg-transparent dark:even:bg-gray-900/30'
+                                            }`}
+                                        >
+                                            <TableCell>{item.user}</TableCell>
+                                            <TableCell>
+                                                {item.fileName}
+                                            </TableCell>
+                                            <TableCell>
+                                                {item.documentCategory}
+                                            </TableCell>
+                                            <TableCell>
+                                                {item.uploadTime}
+                                            </TableCell>
+                                            <TableCell>
+                                                <CircularScore
+                                                    score={item.score}
+                                                />
+                                            </TableCell>
+                                            <TableCell>
+                                                <span
+                                                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(
+                                                        item.status,
+                                                    )}`}
+                                                >
+                                                    {item.status ===
+                                                        'Processing' && (
+                                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                                    )}
+                                                    {item.status}
+                                                </span>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="flex items-center text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                                                        onClick={() =>
+                                                            router.visit(
+                                                                `/pembelian/${item.id}`,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            item.status ===
+                                                                'Processing' ||
+                                                            item.report
+                                                                ?.status ===
+                                                                'pending'
+                                                        }
+                                                    >
+                                                        <Eye className="mr-1 h-4 w-4" />
+                                                        {item.status ===
+                                                        'Processing'
+                                                            ? 'Processing...'
+                                                            : 'Detail'}
+                                                    </Button>
+
+                                                    {/* User: Report Button */}
+                                                    {!isSuperAdmin &&
+                                                        item.status !==
+                                                            'Processing' &&
+                                                        !item.report && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="flex items-center text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                                                                onClick={() =>
+                                                                    handleOpenReportDialog(
+                                                                        item,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Flag className="mr-1 h-4 w-4" />
+                                                                Report
+                                                            </Button>
+                                                        )}
+
+                                                    {/* Super Admin: View Report Button */}
+                                                    {isSuperAdmin &&
+                                                        item.report?.status ===
+                                                            'pending' && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="flex items-center text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20"
+                                                                onClick={() =>
+                                                                    handleOpenViewReportDialog(
+                                                                        item,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Eye className="mr-1 h-4 w-4" />
+                                                                View Report
+                                                            </Button>
+                                                        )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    <TableRow>
+                                        <TableCell
+                                            colSpan={7}
+                                            className="py-8 text-center text-sm text-gray-500 dark:text-gray-400"
+                                        >
+                                            Tidak ada hasil untuk pencarian ini.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </CardContent>
+
+                {/* Pagination */}
+                {!loading && logs.length > 0 && (
+                    <div className="flex flex-col items-center justify-between gap-4 p-4 sm:flex-row">
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                            Menampilkan {pagination.from} hingga {pagination.to}{' '}
+                            dari {pagination.total} entri
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setCurrentPage(1)}
+                                disabled={pagination.current_page === 1}
+                                className="h-8 w-8 p-0"
+                            >
+                                <ChevronsLeft className="h-4 w-4" />
+                            </Button>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    setCurrentPage((prev) =>
+                                        Math.max(1, prev - 1),
+                                    )
+                                }
+                                disabled={pagination.current_page === 1}
+                                className="h-8 w-8 p-0"
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+
+                            <div className="flex items-center gap-1">
+                                {Array.from(
+                                    {
+                                        length: Math.min(
+                                            5,
+                                            pagination.last_page,
+                                        ),
+                                    },
+                                    (_, i) => {
+                                        let pageNum;
+                                        const totalPages = pagination.last_page;
+                                        const currentPage =
+                                            pagination.current_page;
+
+                                        if (totalPages <= 5) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage <= 3) {
+                                            pageNum = i + 1;
+                                        } else if (
+                                            currentPage >=
+                                            totalPages - 2
+                                        ) {
+                                            pageNum = totalPages - 4 + i;
+                                        } else {
+                                            pageNum = currentPage - 2 + i;
+                                        }
+
+                                        return (
+                                            <Button
+                                                key={pageNum}
+                                                variant={
+                                                    currentPage === pageNum
+                                                        ? 'default'
+                                                        : 'outline'
+                                                }
+                                                size="sm"
+                                                onClick={() =>
+                                                    setCurrentPage(pageNum)
+                                                }
+                                                className={`h-8 w-8 p-0 text-xs ${
+                                                    currentPage === pageNum
+                                                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                                        : 'border-gray-300 text-gray-700 dark:border-gray-700 dark:text-gray-200'
+                                                }`}
+                                            >
+                                                {pageNum}
+                                            </Button>
+                                        );
+                                    },
+                                )}
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    setCurrentPage((prev) =>
+                                        Math.min(
+                                            pagination.last_page,
+                                            prev + 1,
+                                        ),
+                                    )
+                                }
+                                disabled={
+                                    pagination.current_page ===
+                                    pagination.last_page
+                                }
+                                className="h-8 w-8 p-0"
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    setCurrentPage(pagination.last_page)
+                                }
+                                disabled={
+                                    pagination.current_page ===
+                                    pagination.last_page
+                                }
+                                className="h-8 w-8 p-0"
+                            >
+                                <ChevronsRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
                 )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </div>
-    </AppLayout>
-  );
+
+                {/* Report Dialog for Users */}
+                <ReportDialog
+                    open={reportDialogOpen}
+                    onOpenChange={setReportDialogOpen}
+                    validationId={selectedLog?.id ?? null}
+                    fileName={selectedLog?.fileName ?? null}
+                    documentType="pembelian"
+                    onReportSubmitted={fetchLogs}
+                />
+
+                {/* View Report Dialog for Super Admin */}
+                <ViewReportDialog
+                    open={viewReportDialogOpen}
+                    onOpenChange={setViewReportDialogOpen}
+                    fileName={selectedLog?.fileName ?? null}
+                    report={selectedLog?.report ?? null}
+                    documentType="pembelian"
+                    onReportReviewed={fetchLogs}
+                />
+            </div>
+        </AppLayout>
+    );
 }

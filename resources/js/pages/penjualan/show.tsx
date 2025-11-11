@@ -1,0 +1,721 @@
+'use client';
+
+import DocumentComparisonPopup from '@/components/DocumentComparisonPopup';
+import InvalidCategoriesBarChart from '@/components/InvalidCategoriesBarChart';
+import InvalidGroupsTabContent from '@/components/InvalidGroupsTabContent';
+import InvalidSourcesBarChart from '@/components/InvalidSourcesBarChart';
+import MatchedGroupsTabContent from '@/components/MatchedGroupsTabContent';
+import TopDiscrepanciesChart from '@/components/TopDiscrepanciesChart';
+import ValidNotesDistributionChart from '@/components/ValidNotesDistributionChart';
+import ValidationScoreDonutChart from '@/components/ValidationScoreDonutChart';
+import ValidationStatsCards from '@/components/ValidationStatsCards';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+import AppLayout from '@/layouts/app-layout';
+
+import { Head, Link, usePage } from '@inertiajs/react';
+import {
+    ArrowLeft,
+    CheckCircle2,
+    FileCheck2,
+    FileText,
+    FileX2,
+    Loader2,
+    Scale,
+    XCircle,
+} from 'lucide-react';
+
+import axios from 'axios';
+import { useEffect, useMemo, useState } from 'react';
+
+interface ValidationGroupPaginated {
+    key: string;
+    discrepancy_category: string;
+    error: string;
+    uploaded_total: number;
+    source_total: number;
+    discrepancy_value: number;
+    sourceLabel: string;
+}
+
+interface MatchedGroupPaginated {
+    row_index: number;
+    key: string;
+    uploaded_total: number;
+    source_total: number;
+    difference: number;
+    note: string;
+    is_individual_row: boolean;
+}
+
+interface ValidationData {
+    fileName: string;
+    role: string;
+    category: string;
+    score: number;
+    matched: number;
+    total: number;
+    mismatched: number;
+    invalidGroups: number;
+    matchedGroups: number;
+    isValid: boolean;
+    roundingValue: number;
+}
+
+interface PaginationData<T> {
+    data: T[];
+    pagination: {
+        current_page: number;
+        per_page: number;
+        total: number;
+        total_pages: number;
+    };
+    filters: {
+        search?: string;
+        category?: string;
+        source?: string;
+        note?: string;
+    };
+    sort: {
+        key: string;
+        direction: 'asc' | 'desc';
+    };
+    uniqueFilters?: {
+        categories: string[];
+        sources: string[];
+        notes: string[];
+    };
+}
+
+type ValidationPageProps = {
+    validationData?: ValidationData;
+    validationId: string;
+};
+
+export default function PenjualanShow() {
+    const { props } = usePage<ValidationPageProps>();
+    const {
+        validationData,
+        validationId,
+    } = props;
+
+    const breadcrumbs = useMemo(
+        () => [
+            { title: 'Penjualan', href: '/penjualan' },
+            { title: 'History Penjualan', href: '/history/penjualan' },
+            { title: `Detail Validasi #${validationId}`, href: '#' },
+        ],
+        [validationId],
+    );
+
+    // State for invalid groups table controls
+    const [searchTerm, setSearchTerm] = useState('');
+    const [categoryFilter, setCategoryFilter] = useState('');
+    const [sourceFilter, setSourceFilter] = useState('');
+    const [sortConfigInvalid, setSortConfigInvalid] = useState<{
+        key: string;
+        direction: 'asc' | 'desc';
+    }>({ key: 'key', direction: 'asc' });
+    const [currentPageInvalid, setCurrentPageInvalid] = useState(1);
+    const [itemsPerPageInvalid, setItemsPerPageInvalid] = useState(10);
+    const [invalidGroupsData, setInvalidGroupsData] =
+        useState<PaginationData<ValidationGroupPaginated> | null>(null);
+    const [invalidGroupsLoading, setInvalidGroupsLoading] = useState(false);
+
+    // State for matched groups table controls
+    const [matchedSearchTerm, setMatchedSearchTerm] = useState('');
+    const [noteFilter, setNoteFilter] = useState('');
+    const [sortConfigMatched, setSortConfigMatched] = useState<{
+        key: string;
+        direction: 'asc' | 'desc';
+    }>({ key: 'key', direction: 'asc' });
+    const [currentPageMatched, setCurrentPageMatched] = useState(1);
+    const [itemsPerPageMatched, setItemsPerPageMatched] = useState(10);
+    const [matchedGroupsData, setMatchedGroupsData] =
+        useState<PaginationData<MatchedGroupPaginated> | null>(null);
+    const [matchedGroupsLoading, setMatchedGroupsLoading] = useState(false);
+
+    // State for document comparison popup
+    const [isPopupOpen, setIsPopupOpen] = useState(false);
+    const [selectedKey, setSelectedKey] = useState('');
+    const [uploadedDocData, setUploadedDocData] = useState<
+        Record<string, unknown>[] | null
+    >(null);
+    const [validationDocData, setValidationDocData] = useState<
+        Record<string, unknown>[] | null
+    >(null);
+    const [uploadedTotal, setUploadedTotal] = useState<number | null>(null);
+    const [sourceTotal, setSourceTotal] = useState<number | null>(null);
+    const [uploadedSumField, setUploadedSumField] = useState<string | null>(
+        null,
+    );
+    const [validationSumField, setValidationSumField] = useState<string | null>(
+        null,
+    );
+    const [popupLoading, setPopupLoading] = useState(false);
+
+    // State for all chart data (not paginated)
+    const [allInvalidGroups, setAllInvalidGroups] = useState<
+        ValidationGroupPaginated[]
+    >([]);
+    const [allMatchedGroups, setAllMatchedGroups] = useState<
+        MatchedGroupPaginated[]
+    >([]);
+    const [activeTab, setActiveTab] = useState<string>(
+        validationData && validationData.mismatched > 0 ? 'invalid' : 'valid',
+    );
+    const [chartDataLoaded, setChartDataLoaded] = useState(false);
+
+    // Calculate total groups (invalid + matched)
+    const totalGroups = useMemo(() => {
+        if (!validationData) return 0;
+        return validationData.invalidGroups + validationData.matchedGroups;
+    }, [validationData]);
+
+    // Data untuk kartu statistik
+    const stats = useMemo(
+        () => {
+            if (!validationData) return [];
+            return [
+                {
+                    title: 'Validation Status',
+                    value: validationData.isValid ? 'Valid' : 'Invalid',
+                    icon: validationData.isValid ? CheckCircle2 : XCircle,
+                    color: validationData.isValid
+                        ? 'text-green-600'
+                        : 'text-red-600',
+                },
+                {
+                    title: 'Total Records Processed',
+                    value: validationData.total.toLocaleString('id-ID'),
+                    icon: Scale,
+                    groups: totalGroups,
+                },
+
+                {
+                    title: 'Total Matched Records',
+                    value: validationData.matched.toLocaleString('id-ID'),
+                    icon: FileCheck2,
+                    groups: validationData.matchedGroups,
+                    color:
+                        validationData.matched > 0
+                            ? 'text-green-600'
+                            : 'text-muted-foreground',
+                },
+                {
+                    title: 'Total Mismatched Records',
+                    value: validationData.mismatched.toLocaleString('id-ID'),
+                    icon: FileX2,
+                    groups: validationData.invalidGroups,
+                    color:
+                        validationData.mismatched > 0
+                            ? 'text-red-600'
+                            : 'text-muted-foreground',
+                },
+            ];
+        },
+        [validationData, totalGroups],
+    );
+
+    // Load chart data only once (lazy loaded)
+    useEffect(() => {
+        if (chartDataLoaded || !validationData) return;
+
+        const fetchChartData = async () => {
+            try {
+                // Fetch both chart data in parallel for better performance
+                const promises = [];
+
+                if (validationData.mismatched > 0) {
+                    promises.push(
+                        axios
+                            .get(
+                                `/penjualan/${validationId}/invalid-groups/all`,
+                            )
+                            .then((response) =>
+                                setAllInvalidGroups(response.data),
+                            )
+                            .catch((error) =>
+                                console.error(
+                                    'Error fetching all invalid groups:',
+                                    error,
+                                ),
+                            ),
+                    );
+                }
+
+                if (validationData.matched > 0) {
+                    promises.push(
+                        axios
+                            .get(
+                                `/penjualan/${validationId}/matched-records/all`,
+                            )
+                            .then((response) =>
+                                setAllMatchedGroups(response.data),
+                            )
+                            .catch((error) =>
+                                console.error(
+                                    'Error fetching all matched groups:',
+                                    error,
+                                ),
+                            ),
+                    );
+                }
+
+                await Promise.all(promises);
+                setChartDataLoaded(true);
+            } catch (error) {
+                console.error('Error fetching chart data:', error);
+            }
+        };
+
+        // Delay chart data loading slightly to prioritize tab data
+        const timer = setTimeout(() => {
+            fetchChartData();
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [validationId, chartDataLoaded, validationData]);
+
+    // Load invalid groups with pagination (only when active tab is invalid)
+    useEffect(() => {
+        if (!validationData || validationData.mismatched === 0 || activeTab !== 'invalid') return;
+
+        const fetchInvalidGroups = async () => {
+            setInvalidGroupsLoading(true);
+            try {
+                const response = await axios.get(
+                    `/penjualan/${validationId}/invalid-groups`,
+                    {
+                        params: {
+                            search: searchTerm,
+                            category: categoryFilter,
+                            source: sourceFilter,
+                            sort_key: sortConfigInvalid.key,
+                            sort_direction: sortConfigInvalid.direction,
+                            page: currentPageInvalid,
+                            per_page: itemsPerPageInvalid,
+                        },
+                    },
+                );
+                setInvalidGroupsData(response.data);
+            } catch (error) {
+                console.error('Error fetching invalid groups:', error);
+            } finally {
+                setInvalidGroupsLoading(false);
+            }
+        };
+
+        fetchInvalidGroups();
+    }, [
+        validationId,
+        searchTerm,
+        categoryFilter,
+        sourceFilter,
+        sortConfigInvalid,
+        currentPageInvalid,
+        itemsPerPageInvalid,
+        activeTab,
+        validationData,
+    ]);
+
+    // Load matched groups with pagination (only when active tab is valid)
+    useEffect(() => {
+        if (!validationData || validationData.matched === 0 || activeTab !== 'valid') return;
+
+        const fetchMatchedGroups = async () => {
+            setMatchedGroupsLoading(true);
+            try {
+                const response = await axios.get(
+                    `/penjualan/${validationId}/matched-records`,
+                    {
+                        params: {
+                            search: matchedSearchTerm,
+                            note: noteFilter,
+                            sort_key: sortConfigMatched.key,
+                            sort_direction: sortConfigMatched.direction,
+                            page: currentPageMatched,
+                            per_page: itemsPerPageMatched,
+                        },
+                    },
+                );
+                setMatchedGroupsData(response.data);
+            } catch (error) {
+                console.error('Error fetching matched groups:', error);
+            } finally {
+                setMatchedGroupsLoading(false);
+            }
+        };
+
+        fetchMatchedGroups();
+    }, [
+        validationId,
+        matchedSearchTerm,
+        noteFilter,
+        sortConfigMatched,
+        currentPageMatched,
+        itemsPerPageMatched,
+        activeTab,
+        validationData,
+    ]);
+
+    // Get unique categories for filter dropdown (from backend)
+    const uniqueCategories = invalidGroupsData?.uniqueFilters?.categories || [];
+
+    // Get unique source labels for filter dropdown (from backend)
+    const uniqueSources = invalidGroupsData?.uniqueFilters?.sources || [];
+
+    // Get unique notes for matched groups filter dropdown (from backend)
+    const uniqueNotes = matchedGroupsData?.uniqueFilters?.notes || [];
+
+    // Handle sort request for invalid groups
+    const requestSortInvalid = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (
+            sortConfigInvalid.key === key &&
+            sortConfigInvalid.direction === 'asc'
+        ) {
+            direction = 'desc';
+        }
+        setSortConfigInvalid({ key, direction });
+        setCurrentPageInvalid(1); // Reset to first page when sorting
+    };
+
+    // Get sort indicator for invalid groups table headers
+    const getSortIndicatorInvalid = (key: string) => {
+        if (sortConfigInvalid.key !== key) return null;
+        return sortConfigInvalid.direction === 'asc' ? '↑' : '↓';
+    };
+
+    // Handle sort request for matched records
+    const requestMatchedSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (
+            sortConfigMatched.key === key &&
+            sortConfigMatched.direction === 'asc'
+        ) {
+            direction = 'desc';
+        }
+        setSortConfigMatched({ key, direction });
+        setCurrentPageMatched(1); // Reset to first page when sorting
+    };
+
+    // Get sort indicator for matched records table headers
+    const getMatchedSortIndicator = (key: string) => {
+        if (sortConfigMatched.key !== key) return null;
+        return sortConfigMatched.direction === 'asc' ? '↑' : '↓';
+    };
+
+    // Handler for clicking on key column
+    const handleKeyClick = async (key: string) => {
+        setSelectedKey(key);
+        setIsPopupOpen(true);
+        setPopupLoading(true);
+        setUploadedDocData(null);
+        setValidationDocData(null);
+        setUploadedTotal(null);
+        setSourceTotal(null);
+        setUploadedSumField(null);
+        setValidationSumField(null);
+
+        try {
+            // Fetch both documents in parallel
+            const [uploadedResponse, validationResponse] = await Promise.all([
+                axios.get(`/penjualan/${validationId}/document-comparison`, {
+                    params: { key, type: 'uploaded' },
+                }),
+                axios.get(`/penjualan/${validationId}/document-comparison`, {
+                    params: { key, type: 'validation' },
+                }),
+            ]);
+
+            // Find the corresponding group to get the totals from either dataset
+            const groupData =
+                invalidGroupsData?.data?.find((group) => group.key === key) ||
+                matchedGroupsData?.data?.find((group) => group.key === key);
+
+            if (groupData) {
+                setUploadedTotal(groupData.uploaded_total);
+                setSourceTotal(groupData.source_total);
+            }
+
+            // Extract sum field information from API responses
+            if (uploadedResponse.data?.sum_field) {
+                setUploadedSumField(uploadedResponse.data.sum_field);
+            }
+            if (validationResponse.data?.sum_field) {
+                setValidationSumField(validationResponse.data.sum_field);
+            }
+
+            // Defensively extract the data array from the server's response body.
+            const extractedUploadedData =
+                uploadedResponse.data?.data || uploadedResponse.data;
+            const extractedValidationData =
+                validationResponse.data?.data || validationResponse.data;
+
+            // Ensure we are setting an array to the state to prevent render errors.
+            if (Array.isArray(extractedUploadedData)) {
+                setUploadedDocData(extractedUploadedData);
+            } else {
+                console.error(
+                    'Extracted uploaded data is not an array:',
+                    extractedUploadedData,
+                );
+                setUploadedDocData([]); // Set empty array on failure
+            }
+
+            if (Array.isArray(extractedValidationData)) {
+                setValidationDocData(extractedValidationData);
+            } else {
+                console.error(
+                    'Extracted validation data is not an array:',
+                    extractedValidationData,
+                );
+                setValidationDocData([]); // Set empty array on failure
+            }
+        } catch (error) {
+            console.error('Error fetching document data:', error);
+        } finally {
+            setPopupLoading(false);
+        }
+    };
+
+    // Loading state jika data belum ada
+    if (!validationData) {
+        return (
+            <AppLayout breadcrumbs={breadcrumbs}>
+                <Head title={`Loading Detail Validasi...`} />
+                <div className="flex h-64 items-center justify-center p-8">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <p className="ml-4 text-muted-foreground">
+                        Memuat data validasi...
+                    </p>
+                </div>
+            </AppLayout>
+        );
+    }
+
+    return (
+        <AppLayout breadcrumbs={breadcrumbs}>
+            <Head title={`Detail Validasi #${validationId}`} />
+
+            <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
+                {/* Header */}
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <div className="mb-2 flex items-center gap-2">
+                            <FileText className="h-6 w-6 text-blue-500" />
+                            <h1 className="text-2xl font-bold">
+                                File Validation Summary
+                            </h1>
+                        </div>
+                        <TooltipProvider>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Badge variant="secondary">
+                                            {validationData.fileName}
+                                        </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Uploaded file name</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Badge variant="outline">
+                                            {validationData.role}
+                                        </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>User role who uploaded this file</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Badge variant="default">
+                                            {validationData.category}
+                                        </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Document category</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Badge variant="destructive" className="bg-orange-500 hover:bg-orange-600">
+                                            Rounding: ±{validationData.roundingValue.toLocaleString('id-ID')}
+                                        </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Rounding tolerance applied during validation</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </div>
+                        </TooltipProvider>
+                    </div>
+                    <Link href="/history/penjualan">
+                        <Button variant="outline" className="w-full sm:w-auto">
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Kembali ke History
+                        </Button>
+                    </Link>
+                </div>
+
+                {/* Horizontal Metrics Layout */}
+                <ValidationStatsCards stats={stats} />
+
+                {/* Charts Section */}
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    {/* Donut Chart for Validation Score */}
+                    <ValidationScoreDonutChart
+                        score={validationData.score}
+                        matched={validationData.matched}
+                        mismatched={validationData.mismatched}
+                        totalGroups={totalGroups}
+                    />
+
+                    <div className="space-y-6">
+                        {/* Horizontal Bar Chart for Invalid Data Categories */}
+                        <InvalidCategoriesBarChart
+                            allInvalidGroups={allInvalidGroups}
+                        />
+
+                        {/* Horizontal Bar Chart for Invalid Sumber */}
+                        <InvalidSourcesBarChart
+                            allInvalidGroups={allInvalidGroups}
+                        />
+                    </div>
+                </div>
+
+                {/* Second Row of Charts */}
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    {/* Top 5 Rows with Highest Selisih */}
+                    <TopDiscrepanciesChart
+                        allInvalidGroups={allInvalidGroups}
+                    />
+
+                    {/* Horizontal Bar Chart for Valid Data Notes */}
+                    <ValidNotesDistributionChart
+                        allMatchedGroups={allMatchedGroups}
+                    />
+                </div>
+
+                {/* Tabs for Invalid and Valid Groups */}
+                {validationData.mismatched > 0 || validationData.matched > 0 ? (
+                    <Tabs
+                        defaultValue={activeTab}
+                        value={activeTab}
+                        onValueChange={setActiveTab}
+                        className="w-full"
+                    >
+                        <TabsList className="grid w-full grid-cols-2">
+                            {validationData.mismatched > 0 && (
+                                <TabsTrigger value="invalid">
+                                    Data Tidak Valid
+                                </TabsTrigger>
+                            )}
+                            {validationData.matched > 0 && (
+                                <TabsTrigger value="valid">
+                                    Data Valid (Matched)
+                                </TabsTrigger>
+                            )}
+                        </TabsList>
+
+                        {/* Invalid Groups Tab */}
+                        {validationData.mismatched > 0 && (
+                            <TabsContent value="invalid" className="space-y-4">
+                                <InvalidGroupsTabContent
+                                    uniqueCategories={uniqueCategories}
+                                    uniqueSources={uniqueSources}
+                                    categoryFilter={categoryFilter}
+                                    sourceFilter={sourceFilter}
+                                    setCategoryFilter={setCategoryFilter}
+                                    setSourceFilter={setSourceFilter}
+                                    searchTerm={searchTerm}
+                                    setSearchTerm={setSearchTerm}
+                                    filteredAndSortedInvalidGroups={
+                                        invalidGroupsData?.data || []
+                                    }
+                                    requestSort={requestSortInvalid}
+                                    getSortIndicator={getSortIndicatorInvalid}
+                                    currentPage={currentPageInvalid}
+                                    setCurrentPage={setCurrentPageInvalid}
+                                    itemsPerPage={itemsPerPageInvalid}
+                                    setItemsPerPage={setItemsPerPageInvalid}
+                                    totalPages={
+                                        invalidGroupsData?.pagination
+                                            .total_pages || 1
+                                    }
+                                    totalItems={
+                                        invalidGroupsData?.pagination.total || 0
+                                    }
+                                    loading={invalidGroupsLoading}
+                                    handleKeyClick={handleKeyClick}
+                                />
+                            </TabsContent>
+                        )}
+
+                        {/* Matched Groups Tab */}
+                        {validationData.matched > 0 && (
+                            <TabsContent value="valid" className="space-y-4">
+                                <MatchedGroupsTabContent
+                                    uniqueNotes={uniqueNotes}
+                                    noteFilter={noteFilter}
+                                    setNoteFilter={setNoteFilter}
+                                    filteredAndSortedMatchedGroups={
+                                        matchedGroupsData?.data || []
+                                    }
+                                    matchedSearchTerm={matchedSearchTerm}
+                                    setMatchedSearchTerm={setMatchedSearchTerm}
+                                    requestMatchedSort={requestMatchedSort}
+                                    getMatchedSortIndicator={
+                                        getMatchedSortIndicator
+                                    }
+                                    currentPage={currentPageMatched}
+                                    setCurrentPage={setCurrentPageMatched}
+                                    itemsPerPage={itemsPerPageMatched}
+                                    setItemsPerPage={setItemsPerPageMatched}
+                                    totalPages={
+                                        matchedGroupsData?.pagination
+                                            .total_pages || 1
+                                    }
+                                    totalItems={
+                                        matchedGroupsData?.pagination.total || 0
+                                    }
+                                    loading={matchedGroupsLoading}
+                                    handleKeyClick={handleKeyClick}
+                                />
+                            </TabsContent>
+                        )}
+                    </Tabs>
+                ) : (
+                    <div className="py-4 text-center text-muted-foreground">
+                        Tidak ada data untuk ditampilkan
+                    </div>
+                )}
+
+                {/* Document Comparison Popup */}
+                <DocumentComparisonPopup
+                    isOpen={isPopupOpen}
+                    onClose={() => setIsPopupOpen(false)}
+                    uploadedDocData={uploadedDocData}
+                    validationDocData={validationDocData}
+                    connectorKey={selectedKey}
+                    uploadedTotal={uploadedTotal}
+                    sourceTotal={sourceTotal}
+                    isLoading={popupLoading}
+                    uploadedSumField={uploadedSumField}
+                    validationSumField={validationSumField}
+                />
+            </div>
+        </AppLayout>
+    );
+}

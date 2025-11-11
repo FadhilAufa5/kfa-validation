@@ -4,8 +4,10 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
 use App\Http\Controllers\Auth\NewPasswordController;
+use App\Http\Controllers\Auth\OtpVerificationController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\SuperAdminLoginController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +24,17 @@ Route::middleware('guest')->group(function () {
     Route::post('login', [AuthenticatedSessionController::class, 'store'])
         ->name('login.store');
 
+    // Super Admin Login Routes (no OTP required)
+    Route::get('admin/login', [SuperAdminLoginController::class, 'create'])
+        ->name('admin.login');
+
+    Route::post('admin/login', [SuperAdminLoginController::class, 'store'])
+        ->name('admin.login.store');
+
+    Route::post('login/otp', [AuthenticatedSessionController::class, 'sendOtp'])
+        ->middleware('throttle:5,1')
+        ->name('login.otp');
+
     Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
         ->name('password.request');
 
@@ -33,6 +46,21 @@ Route::middleware('guest')->group(function () {
 
     Route::post('reset-password', [NewPasswordController::class, 'store'])
         ->name('password.store');
+
+    Route::get('verify-otp', [OtpVerificationController::class, 'show'])
+        ->name('otp.show');
+
+    Route::post('otp/send', [OtpVerificationController::class, 'send'])
+        ->middleware('throttle:5,1')
+        ->name('otp.send');
+
+    Route::post('otp/verify', [OtpVerificationController::class, 'verify'])
+        ->middleware('throttle:10,1')
+        ->name('otp.verify');
+
+    Route::post('otp/resend', [OtpVerificationController::class, 'resend'])
+        ->middleware('throttle:3,1')
+        ->name('otp.resend');
 });
 
 Route::middleware('auth')->group(function () {

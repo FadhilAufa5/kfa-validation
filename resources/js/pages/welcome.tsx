@@ -24,9 +24,8 @@ const ReportingIcon = () => (
 
 export default function Welcome() {
     const { auth } = usePage<SharedData>().props;
+    
 
-    // Menambahkan kelas 'loaded' setelah komponen di-mount untuk memicu animasi
-    // Anda dapat menggunakan useEffect untuk ini jika diperlukan untuk timing yang lebih kompleks
     return (
         <>
             <Head title="Sistem Validasi Data">
@@ -60,17 +59,17 @@ export default function Welcome() {
                                 </Link>
                             ) : (
                                 <>
-                                    <Link
+                                    {/* <Link
                                         href={login()}
                                         className="px-4 py-2 transition hover:text-green-400 focus:outline-none"
                                     >
                                         Log In
-                                    </Link>
+                                    </Link> */}
                                     <Link
-                                        href={register()}
+                                        href={login()}
                                         className="rounded-md bg-green-500 px-4 py-2 text-white shadow-lg shadow-green-500/20 transition-all hover:bg-green-600 hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
                                     >
-                                        Register
+                                        Login
                                     </Link>
                                 </>
                             )}
@@ -78,7 +77,7 @@ export default function Welcome() {
                     </header>
 
                     <main className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-                     <img src="https://upload.wikimedia.org/wikipedia/commons/c/c3/Kimia-Farma-Apotek_MemberofBiofarma.png" alt="" className="w-32 h-22 mb-12 " />
+                     <img src="/logo-kfa.png" alt="Kimia Farma Logo" className="w-32 h-32 mb-12 object-contain" />
                         <div className="animate-fade-in-up">
                             <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-gray-100">
                                 Portal Konsolidasi Data

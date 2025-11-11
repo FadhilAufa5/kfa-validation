@@ -1,10 +1,3 @@
-// resources/js/Pages/pembelian/upload.jsx
-
-import AppLayout from '@/layouts/app-layout';
-import { Head, Link, router, usePage } from '@inertiajs/react';
-import { route } from 'ziggy-js';
-
-// ShadCN UI Components
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,54 +7,285 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import AppLayout from '@/layouts/app-layout';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import axios from 'axios';
+import {
+    ArrowLeft,
+    Loader2,
+    RotateCcw,
+    Sheet,
+    TriangleAlert,
+    UploadCloud,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { route } from 'ziggy-js';
 
-// Icons
-import { ArrowLeft, CircleCheck, TriangleAlert } from 'lucide-react';
+interface UploadPageProps {
+    document_type: string;
+    document_category: string;
+}
 
-// FilePond
-import FilePondPluginFileValidateType from 'filepond-plugin-file-validate-type';
-import 'filepond/dist/filepond.min.css';
-import { FilePond, registerPlugin } from 'react-filepond';
+interface PageProps {
+    flash?: {
+        success?: string;
+        error?: string;
+    };
+}
 
-// Register the FilePond plugin
-registerPlugin(FilePondPluginFileValidateType);
+type UploadStep =
+    | 'initial'
+    | 'converting'
+    | 'previewing'
+    | 'processing'
+    | 'validating'
+    | 'validation_complete'
+    | 'finished';
 
-export default function UploadPage({ document_type }) {
-    // Get shared data from Inertia, including flash messages and CSRF token
-    const { flash, csrf_token } = usePage().props;
+interface ValidationResult {
+    status: 'valid' | 'invalid';
+    invalid_groups: {
+        [key: string]: {
+            discrepancy_category: string;
+            error: string;
+            uploaded_total: number;
+            source_total: number;
+            discrepancy_value: number;
+        };
+    };
+    invalid_rows: {
+        row_index: number;
+        key_value: string;
+        total_omset: number;
+        error: string;
+    }[];
+    validation_id: number;
+}
 
-    // Dynamically generate the correct upload URL based on the document type
-    const uploadUrl = route('pembelian.store', {
-        type: document_type.toLowerCase(),
+export default function UploadPage({
+    document_type,
+    document_category,
+}: UploadPageProps) {
+    const { flash } = usePage<PageProps>().props;
+
+    const saveUrl = route('pembelian.save', {
+        type: document_category.toLowerCase(),
+    });
+    const validateUrl = route('pembelian.validateFile', {
+        type: document_category.toLowerCase(),
     });
 
-    // An efficient way to reload page data without a full browser refresh
-    const handleProcessFile = (error, file) => {
-        if (error) {
-            console.error('Upload error:', error);
-        } else {
-            console.log('Upload success! File info:', file);
-            setTimeout(() => {
-                router.reload({ only: ['flash'] });
-            }, 1000);
+    const { data, setData, reset } = useForm<{ document: File | null }>({
+        document: null,
+    });
+
+    const [step, setStep] = useState<UploadStep>('initial');
+    const [isLoading, setIsLoading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [apiError, setApiError] = useState<string | null>(null);
+    const [needsConversion, setNeedsConversion] = useState(false);
+
+    const [uploadedFilename, setUploadedFilename] = useState<string | null>(
+        null,
+    );
+    const [previewData, setPreviewData] = useState<string[][] | null>(null);
+    const [headerRow, setHeaderRow] = useState<number>(1);
+    const [processedResult, setProcessedResult] = useState<{
+        data_count: number;
+    } | null>(null);
+    const [validationResult, setValidationResult] =
+        useState<ValidationResult | null>(null);
+
+    // Auto-redirect to history page after validation is complete
+    useEffect(() => {
+        if (step === 'validation_complete' && validationResult) {
+            // Redirect to history page after a short delay to show the result
+            const timer = setTimeout(() => {
+                router.visit(route('pembelian.history'));
+            }, 2000); // 2 seconds delay to show validation result before redirect
+
+            // Cleanup the timer if component unmounts
+            return () => clearTimeout(timer);
         }
+    }, [step, validationResult]);
+
+    const handleReset = () => {
+        reset('document');
+        setStep('initial');
+        setIsLoading(false);
+        setUploadProgress(0);
+        setApiError(null);
+        setNeedsConversion(false);
+        setUploadedFilename(null);
+        setPreviewData(null);
+        setHeaderRow(1);
+        setProcessedResult(null);
+        setValidationResult(null);
     };
+
+    /** Step 1: Upload & Preview **/
+async function handleUploadAndPreview() {
+    if (!data.document) {
+        setApiError('Silakan pilih file terlebih dahulu.');
+        return;
+    }
+
+    // Check if file needs conversion (xlsx or xls)
+    const fileExtension = data.document.name.split('.').pop()?.toLowerCase();
+    const requiresConversion = fileExtension === 'xlsx' || fileExtension === 'xls';
+    setNeedsConversion(requiresConversion);
+
+    setIsLoading(true);
+    setApiError(null);
+    setStep(requiresConversion ? 'converting' : 'previewing');
+    setUploadProgress(0);
+
+    // 🔥 Pastikan FormData langsung dari File object
+    const formData = new FormData();
+    formData.append('document', data.document); // nama harus sama dengan backend
+
+    try {
+        console.log('🚀 Mulai upload file ke:', saveUrl);
+        if (requiresConversion) {
+            console.log('📋 File requires conversion from', fileExtension, 'to CSV');
+        }
+
+        const uploadResponse = await axios.post(saveUrl, formData, {
+            withCredentials: true, // penting untuk Laravel session
+            headers: {
+                Accept: 'application/json',
+            },
+            onUploadProgress: (progressEvent) => {
+                const percentCompleted = Math.round(
+                    (progressEvent.loaded * 100) / (progressEvent.total || 1),
+                );
+                setUploadProgress(percentCompleted);
+            },
+        });
+
+        console.log('✅ Upload Response:', uploadResponse.data);
+
+        const { filename } = uploadResponse.data || {};
+        if (!filename) throw new Error('Server tidak mengembalikan nama file.');
+
+        setUploadedFilename(filename);
+
+        // Show conversion complete before moving to preview
+        if (requiresConversion) {
+            setStep('previewing');
+        }
+
+        const previewUrl = route('pembelian.preview', { filename });
+        const previewResponse = await axios.get(previewUrl, {
+            withCredentials: true,
+        });
+
+        setPreviewData(previewResponse.data.preview);
+    } catch (error: any) {
+        console.error('❌ Upload failed:', error);
+        const msg =
+            error.response?.data?.message ||
+            error.response?.data?.error ||
+            error.message;
+        setApiError(msg || 'Gagal mengunggah file.');
+        setStep('initial');
+    } finally {
+        setIsLoading(false);
+    }
+}
+
+    /** Step 2: Process File **/
+    async function handleProcessFile() {
+        if (!uploadedFilename) {
+            setApiError('Tidak ada file yang diunggah untuk diproses.');
+            return;
+        }
+
+        setIsLoading(true);
+        setApiError(null);
+        setStep('processing');
+
+        try {
+            const processUrl = route('pembelian.processWithHeader', {
+                filename: uploadedFilename,
+            });
+            const response = await axios.post(processUrl, { headerRow });
+            console.log('✅ Processed Data:', response.data.data);
+            setProcessedResult({ data_count: response.data.data_count });
+
+            // ✅ Next Step: Automatically validate after processing
+            await handleValidateFile(uploadedFilename);
+        } catch (error: any) {
+            console.error('❌ Processing failed', error);
+            const errorMessage =
+                error.response?.data?.error ||
+                'Gagal memproses file. Pastikan baris header yang dipilih benar.';
+            setApiError(errorMessage);
+            setStep('previewing');
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    /** Step 3: Validate File **/
+    async function handleValidateFile(filenameParam?: string) {
+        const filenameToUse = filenameParam || uploadedFilename;
+        if (!filenameToUse) {
+            setApiError('Tidak ada file yang diunggah untuk divalidasi.');
+            return;
+        }
+
+        console.log('Validating File:', filenameToUse, 'with header row:', headerRow);
+        setIsLoading(true);
+        setApiError(null);
+        setStep('validating');
+
+        try {
+            const response = await axios.post(validateUrl, {
+                filename: filenameToUse,
+                headerRow: headerRow, // Send the selected header row
+            });
+            setValidationResult(response.data);
+            setStep('validation_complete');
+            console.log(response.data);
+        } catch (error: any) {
+            console.error('❌ Validation failed', error);
+            const errorMessage =
+                error.response?.data?.error ||
+                error.message ||
+                'Terjadi kesalahan saat memvalidasi file.';
+            setApiError(errorMessage);
+            setStep('previewing');
+        } finally {
+            setIsLoading(false);
+        }
+    }
 
     return (
         <AppLayout>
-            <Head title={`Upload Dokumen ${document_type}`} />
-
+            <Head title={`Upload Dokumen ${document_category}`} />
             <div className="container mx-auto px-4 py-10">
-                <Card className="mx-auto max-w-3xl">
+                <Card className="mx-auto max-w-4xl">
                     <CardHeader>
                         <div className="mb-2 flex items-start justify-between">
                             <div>
                                 <CardTitle className="text-2xl">
-                                    Upload Dokumen Pembelian {document_type}
+                                    Upload Dokumen Pembelian {document_category}
                                 </CardTitle>
                                 <CardDescription className="mt-1">
-                                    Unggah file Excel (.xlsx, .xls) atau CSV
-                                    yang sesuai.
+                                    Unggah, pratinjau, dan proses file Anda
+                                    dalam beberapa langkah mudah.
                                 </CardDescription>
                             </div>
                             <Link href={route('pembelian.index')}>
@@ -72,19 +296,16 @@ export default function UploadPage({ document_type }) {
                             </Link>
                         </div>
                     </CardHeader>
+
                     <CardContent>
-                        {/* --- Flash Messages Section --- */}
-                        {flash.success && (
-                            <Alert className="mb-6 border-green-500 text-green-700 dark:border-green-600 dark:text-green-300">
-                                <CircleCheck className="h-4 w-4" />
-                                <AlertTitle>Berhasil!</AlertTitle>
-                                <AlertDescription>
-                                    {flash.success}
-                                </AlertDescription>
+                        {apiError && (
+                            <Alert variant="destructive" className="mb-6">
+                                <TriangleAlert className="h-4 w-4" />
+                                <AlertTitle>Terjadi Kesalahan</AlertTitle>
+                                <AlertDescription>{apiError}</AlertDescription>
                             </Alert>
                         )}
-
-                        {flash.error && (
+                        {flash?.error && !apiError && (
                             <Alert variant="destructive" className="mb-6">
                                 <TriangleAlert className="h-4 w-4" />
                                 <AlertTitle>Terjadi Kesalahan</AlertTitle>
@@ -93,28 +314,240 @@ export default function UploadPage({ document_type }) {
                                 </AlertDescription>
                             </Alert>
                         )}
-                        {/* --- End Flash Messages --- */}
 
-                        <FilePond
-                            name="document" // Must match the key in PembelianController
-                            credits={false}
-                            acceptedFileTypes={[
-                                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                                'application/vnd.ms-excel',
-                                'text/csv',
-                            ]}
-                            labelFileTypeNotAllowed="Tipe file tidak valid"
-                            fileValidateTypeLabelExpectedTypes="Hanya menerima file .xlsx, .xls, atau .csv"
-                            labelIdle='Seret & Lepas file atau <span class="filepond--label-action">Telusuri</span>'
-                            server={{
-                                url: uploadUrl, // Dynamic URL for the backend
-                                method: 'POST',
-                                headers: {
-                                    'X-CSRF-TOKEN': csrf_token, // Security is important
-                                },
-                            }}
-                            onprocessfile={handleProcessFile}
-                        />
+                        {/* Step 1: Upload */}
+                        {step === 'initial' && (
+                            <div className="space-y-6">
+                                <div className="grid w-full items-center gap-1.5">
+                                    <Label htmlFor="document">Pilih File</Label>
+   <Input
+    id="document"
+    type="file"
+    accept=".xlsx,.xls,.csv"
+    onChange={(e) => {
+        const file = e.target.files?.[0] ?? null;
+        setData('document', file);
+        console.log('📂 File selected:', file?.name, file?.size);
+    }}
+    disabled={isLoading}
+/>
+                                </div>
+                                <div className="flex justify-end">
+                                    <Button
+                                        onClick={handleUploadAndPreview}
+                                        disabled={isLoading || !data.document}
+                                    >
+                                        {isLoading ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <UploadCloud className="mr-2 h-4 w-4" />
+                                        )}
+                                        Unggah & Pratinjau
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 1.5: Converting (only for xlsx/xls files) */}
+                        {step === 'converting' && isLoading && (
+                            <div className="space-y-4">
+                                <Alert
+                                    variant="default"
+                                    className="border-blue-500"
+                                >
+                                    <Sheet className="h-4 w-4" />
+                                    <AlertTitle>Mengonversi File</AlertTitle>
+                                    <AlertDescription>
+                                        File Excel sedang dikonversi ke format CSV untuk diproses...
+                                    </AlertDescription>
+                                </Alert>
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <p className="text-sm text-muted-foreground">
+                                            Mengunggah dan mengonversi file...
+                                        </p>
+                                    </div>
+                                    <Progress
+                                        value={uploadProgress}
+                                        className="w-full"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 2: Preview */}
+                        {step === 'previewing' && isLoading && (
+                            <div className="space-y-2">
+                                <p className="text-sm text-muted-foreground">
+                                    {needsConversion ? 'Memuat pratinjau...' : 'Mengunggah file...'}
+                                </p>
+                                <Progress
+                                    value={uploadProgress}
+                                    className="w-full"
+                                />
+                            </div>
+                        )}
+
+                        {step === 'previewing' && !isLoading && previewData && (
+                            <div className="space-y-6">
+                                <Alert
+                                    variant="default"
+                                    className="border-blue-500"
+                                >
+                                    <Sheet className="h-4 w-4" />
+                                    <AlertTitle>Pratinjau Data</AlertTitle>
+                                    <AlertDescription>
+                                        File <strong>{uploadedFilename}</strong>{' '}
+                                        berhasil diunggah. Klik pada baris di
+                                        bawah untuk memilihnya sebagai header.
+                                    </AlertDescription>
+                                </Alert>
+
+                                <div className="max-h-80 overflow-auto rounded-md border">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead className="w-16">
+                                                    Baris
+                                                </TableHead>
+                                                {previewData[0]?.map(
+                                                    (_, colIndex) => (
+                                                        <TableHead
+                                                            key={colIndex}
+                                                        >
+                                                            Kolom{' '}
+                                                            {String.fromCharCode(
+                                                                65 + colIndex,
+                                                            )}
+                                                        </TableHead>
+                                                    ),
+                                                )}
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {previewData.map(
+                                                (row, rowIndex) => (
+                                                    <TableRow
+                                                        key={rowIndex}
+                                                        onClick={() =>
+                                                            setHeaderRow(
+                                                                rowIndex + 1,
+                                                            )
+                                                        }
+                                                        className={`cursor-pointer transition-colors hover:bg-muted/50 ${
+                                                            headerRow ===
+                                                            rowIndex + 1
+                                                                ? 'bg-muted'
+                                                                : ''
+                                                        }`}
+                                                    >
+                                                        <TableCell className="font-medium">
+                                                            {rowIndex + 1}
+                                                        </TableCell>
+                                                        {row.map(
+                                                            (
+                                                                cell,
+                                                                cellIndex,
+                                                            ) => (
+                                                                <TableCell
+                                                                    key={
+                                                                        cellIndex
+                                                                    }
+                                                                >
+                                                                    {cell}
+                                                                </TableCell>
+                                                            ),
+                                                        )}
+                                                    </TableRow>
+                                                ),
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+
+                                <div className="flex items-center gap-4">
+                                    <Label
+                                        htmlFor="header-row"
+                                        className="whitespace-nowrap"
+                                    >
+                                        Baris Header Dipilih:
+                                    </Label>
+                                    <Input
+                                        id="header-row"
+                                        type="number"
+                                        min="1"
+                                        className="w-24"
+                                        value={headerRow}
+                                        onChange={(e) =>
+                                            setHeaderRow(
+                                                parseInt(e.target.value, 10) ||
+                                                    1,
+                                            )
+                                        }
+                                    />
+                                </div>
+
+                                <div className="flex justify-end gap-3">
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleReset}
+                                        disabled={isLoading}
+                                    >
+                                        <RotateCcw className="mr-2 h-4 w-4" />
+                                        Unggah File Lain
+                                    </Button>
+                                    <Button
+                                        onClick={handleProcessFile}
+                                        disabled={isLoading}
+                                    >
+                                        {isLoading && (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        )}
+                                        Proses Data
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 3: Processing */}
+                        {step === 'processing' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <p className="text-sm text-muted-foreground">
+                                        Memproses file...
+                                    </p>
+                                </div>
+                                <Progress value={50} className="w-full" />
+                            </div>
+                        )}
+
+                        {/* Step 4: Validating */}
+                        {step === 'validating' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <p className="text-sm text-muted-foreground">
+                                        Memvalidasi file...
+                                    </p>
+                                </div>
+                                <Progress value={75} className="w-full" />
+                            </div>
+                        )}
+
+                        {/* Step 5: Validation Result */}
+                        {step === 'validation_complete' && validationResult && (
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-sm text-green-600">
+                                        Validasi Selesai... Mengarahkan ke
+                                        dashboard analisis
+                                    </p>
+                                </div>
+                                <Progress value={100} className="w-full" />
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>

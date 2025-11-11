@@ -15,13 +15,16 @@ class DatabaseSeeder extends Seeder
     {
         User::factory(10)->create();
 
+        // Create Super Admin
         User::firstOrCreate(
             ['email' => 'super@admin.com'],
             [
-                'name' => 'super',
-                'password' => 'password',
+                'name' => 'Super Admin',
+                'password' => bcrypt('password'),
+                'role' => 'super_admin',
                 'email_verified_at' => now(),
             ]
         );
+
     }
 }

@@ -16,5 +16,6 @@ class CsvUser extends Model
         'username',
         'role',
         'status',
+        'document_type',
     ];
 }
