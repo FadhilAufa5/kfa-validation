@@ -12,6 +12,12 @@ import ValidationStatsCards from '@/components/ValidationStatsCards';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
 
 import { Head, Link, usePage } from '@inertiajs/react';
@@ -60,6 +66,7 @@ interface ValidationData {
     invalidGroups: number;
     matchedGroups: number;
     isValid: boolean;
+    roundingValue: number;
 }
 
 interface PaginationData<T> {
@@ -486,17 +493,50 @@ export default function PembelianShow() {
                                 File Validation Summary
                             </h1>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="secondary">
-                                {validationData.fileName}
-                            </Badge>
-                            <Badge variant="outline">
-                                {validationData.role}
-                            </Badge>
-                            <Badge variant="default">
-                                {validationData.category}
-                            </Badge>
-                        </div>
+                        <TooltipProvider>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Badge variant="secondary">
+                                            {validationData.fileName}
+                                        </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Uploaded file name</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Badge variant="outline">
+                                            {validationData.role}
+                                        </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>User role who uploaded this file</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Badge variant="default">
+                                            {validationData.category}
+                                        </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Document category</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Badge variant="destructive" className="bg-orange-500 hover:bg-orange-600">
+                                            Rounding: ±{validationData.roundingValue.toLocaleString('id-ID')}
+                                        </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Rounding tolerance applied during validation</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </div>
+                        </TooltipProvider>
                     </div>
                     <Link href="/history/pembelian">
                         <Button variant="outline" className="w-full sm:w-auto">

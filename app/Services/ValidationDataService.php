@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Validation;
+use App\Models\ValidationSetting;
 
 class ValidationDataService
 {
@@ -29,7 +30,13 @@ class ValidationDataService
             'invalidGroups' => $invalidGroupsCount,
             'matchedGroups' => $matchedGroupsCount,
             'isValid' => $validation->mismatched_records === 0,
+            'roundingValue' => $this->getRoundingValue(),
         ];
+    }
+
+    public function getRoundingValue(): float
+    {
+        return ValidationSetting::get('rounding_tolerance', 1000.01);
     }
 
     public function getAllInvalidGroups(int $id): array
@@ -596,6 +603,11 @@ class ValidationDataService
         if (!empty($filters['document_type'])) {
             $query->where('document_type', $filters['document_type']);
         }
+
+        // Exclude validations with accepted reports
+        $query->whereDoesntHave('report', function ($q) {
+            $q->where('status', 'accepted');
+        });
 
         // Apply role-based filtering
         if ($currentUser) {
