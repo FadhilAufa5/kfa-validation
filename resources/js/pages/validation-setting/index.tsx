@@ -340,49 +340,19 @@ export default function ValidationSettingIndex({
                                     Max file size: 7GB
                                 </p>
                             </div>
-                            <Button
-                                onClick={() => setIsUploadDialogOpen(true)}
-                                className="w-full"
-                                variant="default"
-                            >
-                                <Upload className="mr-2 h-4 w-4" />
-                                Upload IM Data
-                            </Button>
+                            <div className="pt-10">
+                                <Button
+                                    onClick={() => setIsUploadDialogOpen(true)}
+                                    className="w-full"
+                                    variant="default"
+                                >
+                                    <Upload className="mr-2 h-4 w-4" />
+                                    Upload IM Data
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                 </div>
-
-                {/* Information Card */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Important Information</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                        <div className="space-y-1">
-                            <p className="text-sm font-medium">
-                                Rounding Tolerance:
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                                This value is used to determine acceptable
-                                differences in validation calculations. Values
-                                within the tolerance range are considered valid
-                                matches.
-                            </p>
-                        </div>
-                        <div className="mt-4 space-y-1">
-                            <p className="text-sm font-medium">
-                                IM Data Upload:
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                                Large files (300MB - 7GB) are processed in the
-                                background using a queue system. The system will
-                                automatically handle batch insertions to ensure
-                                efficient processing. You will be notified once
-                                the upload is complete.
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
             </div>
 
             {/* Dialogs */}
