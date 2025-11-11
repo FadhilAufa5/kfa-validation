@@ -2,7 +2,22 @@
 
 import { Button } from '@/components/ui/button';
 import { CardContent } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import {
     Table,
     TableBody,
@@ -11,37 +26,22 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
 import {
+    Calendar,
     ChevronLeft,
     ChevronRight,
     ChevronsLeft,
     ChevronsRight,
-    Search,
-    FileCheck,
     Eye,
+    FileCheck,
     Filter,
-    Calendar,
+    Search,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 
 interface AcceptedReport {
     id: number;
@@ -77,7 +77,9 @@ export default function ReportManagementPage() {
 
     // Detail dialog states
     const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-    const [selectedReport, setSelectedReport] = useState<AcceptedReport | null>(null);
+    const [selectedReport, setSelectedReport] = useState<AcceptedReport | null>(
+        null,
+    );
 
     useEffect(() => {
         setCurrentPage(1);
@@ -164,10 +166,11 @@ export default function ReportManagementPage() {
                             Accepted Reports History
                         </h1>
                         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                            View all accepted validation reports and deleted validations.
+                            View all accepted validation reports and deleted
+                            validations.
                         </p>
                     </div>
-                    
+
                     <div className="flex items-center gap-2">
                         <div className="rounded-lg bg-green-100 px-4 py-2 dark:bg-green-900/30">
                             <span className="text-sm font-medium text-green-700 dark:text-green-400">
@@ -192,20 +195,34 @@ export default function ReportManagementPage() {
                         </div>
 
                         <div className="flex gap-2">
-                            <Select value={reportType} onValueChange={setReportType}>
+                            <Select
+                                value={reportType}
+                                onValueChange={setReportType}
+                            >
                                 <SelectTrigger className="w-[180px]">
                                     <Filter className="mr-2 h-4 w-4" />
                                     <SelectValue placeholder="Report Type" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Types</SelectItem>
-                                    <SelectItem value="wrong_document_type">Salah Tipe Dokumen</SelectItem>
-                                    <SelectItem value="dirty_data">Data Tidak Bersih</SelectItem>
-                                    <SelectItem value="custom">Custom Message</SelectItem>
+                                    <SelectItem value="all">
+                                        All Types
+                                    </SelectItem>
+                                    <SelectItem value="wrong_document_type">
+                                        Salah Tipe Dokumen
+                                    </SelectItem>
+                                    <SelectItem value="dirty_data">
+                                        Data Tidak Bersih
+                                    </SelectItem>
+                                    <SelectItem value="custom">
+                                        Custom Message
+                                    </SelectItem>
                                 </SelectContent>
                             </Select>
 
-                            {(search || reportType !== 'all' || dateFrom || dateTo) && (
+                            {(search ||
+                                reportType !== 'all' ||
+                                dateFrom ||
+                                dateTo) && (
                                 <Button
                                     variant="outline"
                                     onClick={clearFilters}
@@ -231,7 +248,9 @@ export default function ReportManagementPage() {
                                 className="w-[150px]"
                                 placeholder="From"
                             />
-                            <span className="flex items-center text-gray-400">to</span>
+                            <span className="flex items-center text-gray-400">
+                                to
+                            </span>
                             <Input
                                 type="date"
                                 value={dateTo}
@@ -249,8 +268,10 @@ export default function ReportManagementPage() {
                         <Table className="min-w-[1000px]">
                             <TableHeader>
                                 <TableRow className="bg-gray-200/60 dark:bg-gray-900/60">
+                                    <TableHead className="border-gray-250 w-[350px] border-b px-5 py-3 text-sm font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200">
+                                        File Name
+                                    </TableHead>
                                     {[
-                                        'File Name',
                                         'Document Type',
                                         'Report Type',
                                         'Reported By',
@@ -261,7 +282,7 @@ export default function ReportManagementPage() {
                                     ].map((head) => (
                                         <TableHead
                                             key={head}
-                                            className="border-b border-gray-250 px-5 py-3 text-sm font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200"
+                                            className="border-gray-250 border-b px-5 py-3 text-sm font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200"
                                         >
                                             {head}
                                         </TableHead>
@@ -285,12 +306,16 @@ export default function ReportManagementPage() {
                                             key={report.id}
                                             className="transition-colors odd:bg-white even:bg-gray-50 dark:odd:bg-transparent dark:even:bg-gray-900/30"
                                         >
-                                            <TableCell className="font-medium">
+                                            <TableCell
+                                                className="max-w-[350px] font-medium"
+                                                title={report.file_name}
+                                            >
                                                 {report.file_name}
                                             </TableCell>
                                             <TableCell>
                                                 <span className="rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                                                    {report.document_type} - {report.document_category}
+                                                    {report.document_type} -{' '}
+                                                    {report.document_category}
                                                 </span>
                                             </TableCell>
                                             <TableCell>
@@ -299,14 +324,20 @@ export default function ReportManagementPage() {
                                                         report.report_type,
                                                     )}`}
                                                 >
-                                                    {getReportTypeLabel(report.report_type)}
+                                                    {getReportTypeLabel(
+                                                        report.report_type,
+                                                    )}
                                                 </span>
                                             </TableCell>
-                                            <TableCell>{report.reported_by}</TableCell>
+                                            <TableCell>
+                                                {report.reported_by}
+                                            </TableCell>
                                             <TableCell className="text-sm text-gray-600 dark:text-gray-400">
                                                 {report.reported_at}
                                             </TableCell>
-                                            <TableCell>{report.reviewed_by}</TableCell>
+                                            <TableCell>
+                                                {report.reviewed_by}
+                                            </TableCell>
                                             <TableCell className="text-sm text-gray-600 dark:text-gray-400">
                                                 {report.reviewed_at}
                                             </TableCell>
@@ -315,7 +346,9 @@ export default function ReportManagementPage() {
                                                     variant="ghost"
                                                     size="sm"
                                                     className="flex items-center text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
-                                                    onClick={() => handleViewDetail(report)}
+                                                    onClick={() =>
+                                                        handleViewDetail(report)
+                                                    }
                                                 >
                                                     <Eye className="mr-1 h-4 w-4" />
                                                     Detail
@@ -342,7 +375,8 @@ export default function ReportManagementPage() {
                 {!loading && reports.length > 0 && (
                     <div className="flex flex-col items-center justify-between gap-4 p-4 sm:flex-row">
                         <div className="text-sm text-gray-600 dark:text-gray-400">
-                            Showing {pagination.from} to {pagination.to} of {pagination.total} reports
+                            Showing {pagination.from} to {pagination.to} of{' '}
+                            {pagination.total} reports
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -359,7 +393,11 @@ export default function ReportManagementPage() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                                onClick={() =>
+                                    setCurrentPage((prev) =>
+                                        Math.max(1, prev - 1),
+                                    )
+                                }
                                 disabled={pagination.current_page === 1}
                                 className="h-8 w-8 p-0"
                             >
@@ -368,17 +406,26 @@ export default function ReportManagementPage() {
 
                             <div className="flex items-center gap-1">
                                 {Array.from(
-                                    { length: Math.min(5, pagination.last_page) },
+                                    {
+                                        length: Math.min(
+                                            5,
+                                            pagination.last_page,
+                                        ),
+                                    },
                                     (_, i) => {
                                         let pageNum;
                                         const totalPages = pagination.last_page;
-                                        const currentPage = pagination.current_page;
+                                        const currentPage =
+                                            pagination.current_page;
 
                                         if (totalPages <= 5) {
                                             pageNum = i + 1;
                                         } else if (currentPage <= 3) {
                                             pageNum = i + 1;
-                                        } else if (currentPage >= totalPages - 2) {
+                                        } else if (
+                                            currentPage >=
+                                            totalPages - 2
+                                        ) {
                                             pageNum = totalPages - 4 + i;
                                         } else {
                                             pageNum = currentPage - 2 + i;
@@ -387,9 +434,15 @@ export default function ReportManagementPage() {
                                         return (
                                             <Button
                                                 key={pageNum}
-                                                variant={currentPage === pageNum ? 'default' : 'outline'}
+                                                variant={
+                                                    currentPage === pageNum
+                                                        ? 'default'
+                                                        : 'outline'
+                                                }
                                                 size="sm"
-                                                onClick={() => setCurrentPage(pageNum)}
+                                                onClick={() =>
+                                                    setCurrentPage(pageNum)
+                                                }
                                                 className={`h-8 w-8 p-0 text-xs ${
                                                     currentPage === pageNum
                                                         ? 'bg-blue-600 text-white hover:bg-blue-700'
@@ -407,9 +460,17 @@ export default function ReportManagementPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() =>
-                                    setCurrentPage((prev) => Math.min(pagination.last_page, prev + 1))
+                                    setCurrentPage((prev) =>
+                                        Math.min(
+                                            pagination.last_page,
+                                            prev + 1,
+                                        ),
+                                    )
                                 }
-                                disabled={pagination.current_page === pagination.last_page}
+                                disabled={
+                                    pagination.current_page ===
+                                    pagination.last_page
+                                }
                                 className="h-8 w-8 p-0"
                             >
                                 <ChevronRight className="h-4 w-4" />
@@ -418,8 +479,13 @@ export default function ReportManagementPage() {
                             <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setCurrentPage(pagination.last_page)}
-                                disabled={pagination.current_page === pagination.last_page}
+                                onClick={() =>
+                                    setCurrentPage(pagination.last_page)
+                                }
+                                disabled={
+                                    pagination.current_page ===
+                                    pagination.last_page
+                                }
                                 className="h-8 w-8 p-0"
                             >
                                 <ChevronsRight className="h-4 w-4" />
@@ -429,7 +495,10 @@ export default function ReportManagementPage() {
                 )}
 
                 {/* Detail Dialog */}
-                <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+                <Dialog
+                    open={detailDialogOpen}
+                    onOpenChange={setDetailDialogOpen}
+                >
                     <DialogContent className="sm:max-w-[600px]">
                         <DialogHeader>
                             <DialogTitle>Report Details</DialogTitle>
@@ -461,7 +530,10 @@ export default function ReportManagementPage() {
                             <div className="grid gap-2">
                                 <Label>Report Type</Label>
                                 <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
-                                    {selectedReport && getReportTypeLabel(selectedReport.report_type)}
+                                    {selectedReport &&
+                                        getReportTypeLabel(
+                                            selectedReport.report_type,
+                                        )}
                                 </div>
                             </div>
                             {selectedReport?.report_message && (

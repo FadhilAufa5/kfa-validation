@@ -1,5 +1,6 @@
 'use client';
 
+import { ReportDialog } from '@/components/ReportDialog';
 import { Button } from '@/components/ui/button';
 import { CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { ViewReportDialog } from '@/components/ViewReportDialog';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, router, usePage } from '@inertiajs/react';
@@ -21,15 +23,13 @@ import {
     ChevronsLeft,
     ChevronsRight,
     Eye,
+    Flag,
     Folder,
     Loader2,
     Plus,
     Search,
-    Flag,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { ReportDialog } from '@/components/ReportDialog';
-import { ViewReportDialog } from '@/components/ViewReportDialog';
 
 interface ValidationLog {
     id: number;
@@ -115,7 +115,7 @@ export const CircularScore = ({ score }: { score: string }) => {
 export default function ValidationLogPage() {
     const { auth } = usePage().props as any;
     const isSuperAdmin = auth?.user?.role === 'super_admin';
-    
+
     const [logs, setLogs] = useState<ValidationLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -183,7 +183,11 @@ export default function ValidationLogPage() {
                     setLogs((prevLogs) =>
                         prevLogs.map((log) => {
                             const update = updates.find(
-                                (u: { id: number; status: string; score: string }) => u.id === log.id,
+                                (u: {
+                                    id: number;
+                                    status: string;
+                                    score: string;
+                                }) => u.id === log.id,
                             );
                             if (update && update.status !== log.status) {
                                 return { ...log, ...update };
@@ -452,8 +456,9 @@ export default function ValidationLogPage() {
                                         <TableRow
                                             key={item.id}
                                             className={`transition-colors ${
-                                                item.report?.status === 'pending'
-                                                    ? 'opacity-50 bg-gray-100 dark:bg-gray-800/50'
+                                                item.report?.status ===
+                                                'pending'
+                                                    ? 'bg-gray-100 opacity-50 dark:bg-gray-800/50'
                                                     : 'odd:bg-white even:bg-gray-50 dark:odd:bg-transparent dark:even:bg-gray-900/30'
                                             }`}
                                         >
@@ -498,44 +503,58 @@ export default function ValidationLogPage() {
                                                             )
                                                         }
                                                         disabled={
-                                                            item.status === 'Processing' || 
-                                                            (item.report?.status === 'pending')
+                                                            item.status ===
+                                                                'Processing' ||
+                                                            item.report
+                                                                ?.status ===
+                                                                'pending'
                                                         }
                                                     >
                                                         <Eye className="mr-1 h-4 w-4" />
-                                                        {item.status === 'Processing'
+                                                        {item.status ===
+                                                        'Processing'
                                                             ? 'Processing...'
                                                             : 'Detail'}
                                                     </Button>
 
                                                     {/* User: Report Button */}
-                                                    {!isSuperAdmin && 
-                                                     item.status !== 'Processing' && 
-                                                     !item.report && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="flex items-center text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20"
-                                                            onClick={() => handleOpenReportDialog(item)}
-                                                        >
-                                                            <Flag className="mr-1 h-4 w-4" />
-                                                            Report
-                                                        </Button>
-                                                    )}
+                                                    {!isSuperAdmin &&
+                                                        item.status !==
+                                                            'Processing' &&
+                                                        !item.report && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="flex items-center text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                                                                onClick={() =>
+                                                                    handleOpenReportDialog(
+                                                                        item,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Flag className="mr-1 h-4 w-4" />
+                                                                Report
+                                                            </Button>
+                                                        )}
 
                                                     {/* Super Admin: View Report Button */}
-                                                    {isSuperAdmin && 
-                                                     item.report?.status === 'pending' && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="flex items-center text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20"
-                                                            onClick={() => handleOpenViewReportDialog(item)}
-                                                        >
-                                                            <Eye className="mr-1 h-4 w-4" />
-                                                            View Report
-                                                        </Button>
-                                                    )}
+                                                    {isSuperAdmin &&
+                                                        item.report?.status ===
+                                                            'pending' && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="flex items-center text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20"
+                                                                onClick={() =>
+                                                                    handleOpenViewReportDialog(
+                                                                        item,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Eye className="mr-1 h-4 w-4" />
+                                                                View Report
+                                                            </Button>
+                                                        )}
                                                 </div>
                                             </TableCell>
                                         </TableRow>
