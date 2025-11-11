@@ -11,6 +11,7 @@ use App\Services\DocumentComparisonService;
 use App\Services\ValidationDataService;
 use App\Services\ActivityLogger;
 use App\Services\MappedFileService;
+use App\Services\ValidationReportService;
 use App\Jobs\ProcessFileValidation;
 use App\Models\Validation;
 
@@ -21,7 +22,8 @@ class PenjualanController extends Controller
         private ValidationService $validationService,
         private DocumentComparisonService $documentComparisonService,
         private ValidationDataService $validationDataService,
-        private MappedFileService $mappedFileService
+        private MappedFileService $mappedFileService,
+        private ValidationReportService $reportService
     ) {
     }
 
@@ -508,6 +510,85 @@ class PenjualanController extends Controller
             return response()->json($data);
         } catch (\Exception $e) {
             Log::error('Document comparison failed', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function submitReport(Request $request, $id)
+    {
+        $request->validate([
+            'report_type' => 'required|in:custom,wrong_document_type,dirty_data',
+            'report_message' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $result = $this->reportService->submitReport(
+                validationId: $id,
+                reportType: $request->report_type,
+                reportMessage: $request->report_message,
+                userId: auth()->id()
+            );
+
+            return response()->json($result, 201);
+        } catch (\Exception $e) {
+            Log::error('Report submission failed', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getReport($id)
+    {
+        try {
+            $report = $this->reportService->getReportByValidationId($id);
+
+            if (!$report) {
+                return response()->json(['error' => 'Report not found'], 404);
+            }
+
+            return response()->json($report);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function acceptReport(Request $request, $id)
+    {
+        try {
+            // Only super admin can accept reports
+            if (!$this->reportService->canReviewReports(auth()->user()->role)) {
+                return response()->json(['error' => 'Unauthorized'], 403);
+            }
+
+            $result = $this->reportService->acceptReport(
+                reportId: $id,
+                reviewerId: auth()->id(),
+                reviewNotes: $request->input('review_notes')
+            );
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('Accept report failed', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function revokeReport(Request $request, $id)
+    {
+        try {
+            // Only super admin can revoke reports
+            if (!$this->reportService->canReviewReports(auth()->user()->role)) {
+                return response()->json(['error' => 'Unauthorized'], 403);
+            }
+
+            $result = $this->reportService->revokeReport(
+                reportId: $id,
+                reviewerId: auth()->id(),
+                reviewNotes: $request->input('review_notes')
+            );
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('Revoke report failed', ['error' => $e->getMessage()]);
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }

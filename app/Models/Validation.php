@@ -56,6 +56,11 @@ class Validation extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function report(): HasMany
+    {
+        return $this->hasMany(ValidationReport::class);
+    }
+
     /**
      * Update validation status
      */

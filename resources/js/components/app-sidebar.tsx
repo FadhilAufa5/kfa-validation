@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { HandCoins, History, LayoutGrid, Store, Users, Activity, LayoutDashboard, Settings, Shield } from 'lucide-react';
+import { HandCoins, History, LayoutGrid, Store, Users, Activity, LayoutDashboard, Settings, Shield, FileCheck } from 'lucide-react';
 
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
@@ -11,6 +11,7 @@ import { NavPembelian } from '@/components/nav-pembelian';
 import { NavPenjualan } from '@/components/nav-penjualan';
 import { NavUser } from '@/components/nav-user';
 import { NavUy } from '@/components/nav-uy';
+import { NavReportManagement } from '@/components/nav-report-management';
 
 import {
     Sidebar,
@@ -80,6 +81,14 @@ const uyNavItems: NavItem[] = [
     },
 ];
 
+const reportManagementNavItems: NavItem[] = [
+    {
+        title: 'Accepted Reports',
+        href: '/report-management',
+        icon: FileCheck,
+    },
+];
+
 // const footerNavItems: NavItem[] = [
 //   {
 //     title: 'Documentation',
@@ -112,7 +121,8 @@ export function AppSidebar() {
                 <NavMain items={mainNavItems} />
                 <NavPembelian items={pembelianNavItems} />
                 <NavPenjualan items={penjualanNavItems} />
-                {/* Only show User Management & Activity Logs for super_admin */}
+                {/* Only show Report Management & User Management for super_admin */}
+                {isSuperAdmin && <NavReportManagement items={reportManagementNavItems} />}
                 {isSuperAdmin && <NavUy items={uyNavItems} />}
             </SidebarContent>
 

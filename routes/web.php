@@ -30,7 +30,6 @@ Route::get('/', function () {
 // Authenticated Routes
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
-});
 
 /*
 |--------------------------------------------------------------------------
@@ -61,6 +60,12 @@ Route::get('penjualan/{id}/document-comparison', [PenjualanController::class, 'g
 Route::get('penjualan/history/data', [PenjualanController::class, 'getValidationHistory'])->name('penjualan.history.data');
 Route::post('penjualan/history/check-processing', [PenjualanController::class, 'checkProcessingStatus'])->name('penjualan.history.check-processing');
 
+// Report Routes
+Route::post('penjualan/{id}/report', [PenjualanController::class, 'submitReport'])->name('penjualan.report.submit');
+Route::get('penjualan/{id}/report', [PenjualanController::class, 'getReport'])->name('penjualan.report.get');
+Route::post('penjualan/report/{id}/accept', [PenjualanController::class, 'acceptReport'])->name('penjualan.report.accept');
+Route::post('penjualan/report/{id}/revoke', [PenjualanController::class, 'revokeReport'])->name('penjualan.report.revoke');
+
 /*
 |--------------------------------------------------------------------------
 | Pembelian (Purchase) Routes
@@ -88,6 +93,14 @@ Route::get('pembelian/{id}/matched-records/all', [PembelianController::class, 'g
 Route::get('pembelian/{id}/document-comparison', [PembelianController::class, 'getDocumentComparisonData'])->name('pembelian.document-comparison');
 Route::get('pembelian/history/data', [PembelianController::class, 'getValidationHistory'])->name('pembelian.history.data');
 Route::post('pembelian/history/check-processing', [PembelianController::class, 'checkProcessingStatus'])->name('pembelian.history.check-processing');
+
+// Report Routes
+Route::post('pembelian/{id}/report', [PembelianController::class, 'submitReport'])->name('pembelian.report.submit');
+Route::get('pembelian/{id}/report', [PembelianController::class, 'getReport'])->name('pembelian.report.get');
+Route::post('pembelian/report/{id}/accept', [PembelianController::class, 'acceptReport'])->name('pembelian.report.accept');
+Route::post('pembelian/report/{id}/revoke', [PembelianController::class, 'revokeReport'])->name('pembelian.report.revoke');
+
+}); // End of auth middleware group
 
 /*
 |--------------------------------------------------------------------------
@@ -138,6 +151,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/notifications/{id}/mark-as-read', [App\Http\Controllers\NotificationController::class, 'markAsRead'])->name('notifications.mark-as-read');
     Route::post('/notifications/mark-all-as-read', [App\Http\Controllers\NotificationController::class, 'markAllAsRead'])->name('notifications.mark-all-as-read');
     Route::delete('/notifications/{id}', [App\Http\Controllers\NotificationController::class, 'destroy'])->name('notifications.destroy');
+});
+
+// Report Management (Super Admin Only)
+Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
+    Route::get('/report-management', [App\Http\Controllers\ReportManagementController::class, 'index'])->name('report-management.index');
+    Route::get('/report-management/accepted', [App\Http\Controllers\ReportManagementController::class, 'getAcceptedReports'])->name('report-management.accepted');
+    Route::get('/report-management/all', [App\Http\Controllers\ReportManagementController::class, 'getAllReports'])->name('report-management.all');
 });
 
 // Include additional route files

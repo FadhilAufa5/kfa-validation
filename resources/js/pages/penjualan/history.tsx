@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import axios from 'axios';
 import {
     ChevronLeft,
@@ -25,8 +25,11 @@ import {
     Loader2,
     Plus,
     Search,
+    Flag,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { ReportDialog } from '@/components/ReportDialog';
+import { ViewReportDialog } from '@/components/ViewReportDialog';
 
 interface ValidationLog {
     id: number;
@@ -38,6 +41,12 @@ interface ValidationLog {
     status: 'Valid' | 'Invalid' | 'Processing' | 'Failed';
     processing_status?: string;
     processing_details?: any;
+    report?: {
+        id: number;
+        status: 'pending' | 'accepted' | 'revoked';
+        report_type: 'custom' | 'wrong_document_type' | 'dirty_data';
+        report_message?: string;
+    } | null;
 }
 
 export const CircularScore = ({ score }: { score: string }) => {
@@ -102,6 +111,9 @@ export const CircularScore = ({ score }: { score: string }) => {
 };
 
 export default function ValidationLogPage() {
+    const { auth } = usePage().props as any;
+    const isSuperAdmin = auth?.user?.role === 'super_admin';
+    
     const [logs, setLogs] = useState<ValidationLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
@@ -120,6 +132,13 @@ export default function ValidationLogPage() {
     const [previousProcessingIds, setPreviousProcessingIds] = useState<
         number[]
     >([]);
+
+    // Report dialog states
+    const [reportDialogOpen, setReportDialogOpen] = useState(false);
+    const [selectedLog, setSelectedLog] = useState<ValidationLog | null>(null);
+
+    // View report dialog states
+    const [viewReportDialogOpen, setViewReportDialogOpen] = useState(false);
 
     // Request notification permission on mount
     useEffect(() => {
@@ -247,6 +266,16 @@ export default function ValidationLogPage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleOpenReportDialog = (log: ValidationLog) => {
+        setSelectedLog(log);
+        setReportDialogOpen(true);
+    };
+
+    const handleOpenViewReportDialog = (log: ValidationLog) => {
+        setSelectedLog(log);
+        setViewReportDialogOpen(true);
     };
 
     const countByStatus = {
@@ -413,7 +442,11 @@ export default function ValidationLogPage() {
                                     logs.map((item) => (
                                         <TableRow
                                             key={item.id}
-                                            className="transition-colors odd:bg-white even:bg-gray-50 dark:odd:bg-transparent dark:even:bg-gray-900/30"
+                                            className={`transition-colors ${
+                                                item.report?.status === 'pending'
+                                                    ? 'opacity-50 bg-gray-100 dark:bg-gray-800/50'
+                                                    : 'odd:bg-white even:bg-gray-50 dark:odd:bg-transparent dark:even:bg-gray-900/30'
+                                            }`}
                                         >
                                             <TableCell>{item.user}</TableCell>
                                             <TableCell>
@@ -444,26 +477,56 @@ export default function ValidationLogPage() {
                                                 </span>
                                             </TableCell>
                                             <TableCell>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="flex items-center text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
-                                                    onClick={() =>
-                                                        router.visit(
-                                                            `/penjualan/${item.id}`,
-                                                        )
-                                                    }
-                                                    disabled={
-                                                        item.status ===
-                                                        'Processing'
-                                                    }
-                                                >
-                                                    <Eye className="mr-1 h-4 w-4" />{' '}
-                                                    {item.status ===
-                                                    'Processing'
-                                                        ? 'Processing...'
-                                                        : 'Detail'}
-                                                </Button>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="flex items-center text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                                                        onClick={() =>
+                                                            router.visit(
+                                                                `/penjualan/${item.id}`,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            item.status === 'Processing' || 
+                                                            (item.report?.status === 'pending')
+                                                        }
+                                                    >
+                                                        <Eye className="mr-1 h-4 w-4" />
+                                                        {item.status === 'Processing'
+                                                            ? 'Processing...'
+                                                            : 'Detail'}
+                                                    </Button>
+
+                                                    {/* User: Report Button */}
+                                                    {!isSuperAdmin && 
+                                                     item.status !== 'Processing' && 
+                                                     !item.report && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="flex items-center text-orange-600 hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                                                            onClick={() => handleOpenReportDialog(item)}
+                                                        >
+                                                            <Flag className="mr-1 h-4 w-4" />
+                                                            Report
+                                                        </Button>
+                                                    )}
+
+                                                    {/* Super Admin: View Report Button */}
+                                                    {isSuperAdmin && 
+                                                     item.report?.status === 'pending' && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="flex items-center text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20"
+                                                            onClick={() => handleOpenViewReportDialog(item)}
+                                                        >
+                                                            <Eye className="mr-1 h-4 w-4" />
+                                                            View Report
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))
@@ -604,6 +667,26 @@ export default function ValidationLogPage() {
                         </div>
                     </div>
                 )}
+
+                {/* Report Dialog for Users */}
+                <ReportDialog
+                    open={reportDialogOpen}
+                    onOpenChange={setReportDialogOpen}
+                    validationId={selectedLog?.id ?? null}
+                    fileName={selectedLog?.fileName ?? null}
+                    documentType="penjualan"
+                    onReportSubmitted={fetchLogs}
+                />
+
+                {/* View Report Dialog for Super Admin */}
+                <ViewReportDialog
+                    open={viewReportDialogOpen}
+                    onOpenChange={setViewReportDialogOpen}
+                    fileName={selectedLog?.fileName ?? null}
+                    report={selectedLog?.report ?? null}
+                    documentType="penjualan"
+                    onReportReviewed={fetchLogs}
+                />
             </div>
         </AppLayout>
     );

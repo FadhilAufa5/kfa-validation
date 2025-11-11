@@ -588,7 +588,9 @@ class ValidationDataService
 
     public function getValidationHistory(array $filters): array
     {
-        $query = Validation::with('user');
+        $query = Validation::with(['user', 'report' => function ($q) {
+            $q->latest();
+        }]);
         $currentUser = auth()->user();
 
         if (!empty($filters['document_type'])) {
@@ -646,6 +648,18 @@ class ValidationDataService
                 $displayStatus = 'Invalid';
             }
 
+            // Get latest report if exists
+            $latestReport = $validation->report->first();
+            $reportData = null;
+            if ($latestReport) {
+                $reportData = [
+                    'id' => $latestReport->id,
+                    'status' => $latestReport->status,
+                    'report_type' => $latestReport->report_type,
+                    'report_message' => $latestReport->report_message,
+                ];
+            }
+
             return [
                 'id' => $validation->id,
                 'user' => $validation->user ? $validation->user->name : $validation->role,
@@ -656,6 +670,7 @@ class ValidationDataService
                 'status' => $displayStatus,
                 'processing_status' => $validation->status, // 'processing', 'completed', 'failed'
                 'processing_details' => $validation->processing_details,
+                'report' => $reportData,
             ];
         });
 
