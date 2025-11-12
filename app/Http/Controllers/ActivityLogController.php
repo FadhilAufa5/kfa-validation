@@ -27,6 +27,10 @@ class ActivityLogController extends Controller
             $query->where('action', $request->action);
         }
 
+        if ($request->has('category') && $request->category) {
+            $query->where('category', $request->category);
+        }
+
         if ($request->has('user_role') && $request->user_role) {
             $query->where('user_role', $request->user_role);
         }
@@ -42,13 +46,15 @@ class ActivityLogController extends Controller
         $logs = $query->paginate(50);
 
         $actions = ActivityLog::distinct()->pluck('action');
+        $categories = ActivityLog::distinct()->whereNotNull('category')->pluck('category');
         $roles = ActivityLog::distinct()->whereNotNull('user_role')->pluck('user_role');
 
         return Inertia::render('activity-logs/index', [
             'logs' => $logs,
             'actions' => $actions,
+            'categories' => $categories,
             'roles' => $roles,
-            'filters' => $request->only(['search', 'action', 'user_role', 'date_from', 'date_to']),
+            'filters' => $request->only(['search', 'action', 'category', 'user_role', 'date_from', 'date_to']),
         ]);
     }
 
