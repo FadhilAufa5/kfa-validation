@@ -44,24 +44,24 @@ class RolePermissionSeeder extends Seeder
             );
         }
 
-        // Create roles
+        // Create roles with comprehensive descriptions for AddUserDialog
         $roles = [
             [
                 'name' => 'super_admin',
                 'display_name' => 'Super Admin',
-                'description' => 'Full system access with all permissions',
+                'description' => 'Full system access - Can manage users, roles, settings, and view all data',
                 'is_default' => false,
             ],
             [
                 'name' => 'user',
                 'display_name' => 'User',
-                'description' => 'Standard user with upload and validation access',
+                'description' => 'Standard access - Can upload files, run validations, and view own history',
                 'is_default' => true,
             ],
             [
                 'name' => 'visitor',
                 'display_name' => 'Visitor',
-                'description' => 'Read-only access to view validation history and details',
+                'description' => 'Read-only access - Can only view assigned user\'s validation history and details',
                 'is_default' => false,
             ],
         ];

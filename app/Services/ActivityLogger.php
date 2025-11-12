@@ -8,12 +8,19 @@ use Illuminate\Support\Facades\Request;
 
 class ActivityLogger
 {
+    const CATEGORY_VALIDATION = 'Validation';
+    const CATEGORY_LOGIN = 'Login';
+    const CATEGORY_USER = 'User';
+    const CATEGORY_SETTING = 'Setting';
+    const CATEGORY_REPORT = 'Report';
+
     public static function log(
         string $action,
         ?string $description = null,
         ?string $entityType = null,
         ?string $entityId = null,
-        ?array $metadata = null
+        ?array $metadata = null,
+        ?string $category = null
     ): ActivityLog {
         $user = Auth::user();
         
@@ -22,6 +29,7 @@ class ActivityLogger
             'user_name' => $user?->name ?? 'System',
             'user_role' => $user?->role,
             'action' => $action,
+            'category' => $category,
             'entity_type' => $entityType,
             'entity_id' => $entityId,
             'description' => $description,
@@ -36,7 +44,8 @@ class ActivityLogger
         return self::log(
             action: 'login',
             description: "User {$user->name} berhasil login",
-            metadata: ['user_email' => $user->email]
+            metadata: ['user_email' => $user->email],
+            category: self::CATEGORY_LOGIN
         );
     }
 
@@ -45,23 +54,41 @@ class ActivityLogger
         return self::log(
             action: 'logout',
             description: "User {$user->name} logout",
-            metadata: ['user_email' => $user->email]
+            metadata: ['user_email' => $user->email],
+            category: self::CATEGORY_LOGIN
         );
     }
 
     public static function logCreate(string $entityType, $entity, ?string $description = null): ActivityLog
     {
+        $category = match(strtolower($entityType)) {
+            'user', 'visitor' => self::CATEGORY_USER,
+            'validation' => self::CATEGORY_VALIDATION,
+            'setting', 'validationsetting' => self::CATEGORY_SETTING,
+            'report' => self::CATEGORY_REPORT,
+            default => null
+        };
+
         return self::log(
             action: 'create',
             description: $description ?? "Membuat {$entityType} baru",
             entityType: $entityType,
             entityId: (string) $entity->id,
-            metadata: ['entity_data' => $entity->toArray()]
+            metadata: ['entity_data' => $entity->toArray()],
+            category: $category
         );
     }
 
     public static function logUpdate(string $entityType, $entity, ?string $description = null, ?array $changes = null): ActivityLog
     {
+        $category = match(strtolower($entityType)) {
+            'user', 'visitor' => self::CATEGORY_USER,
+            'validation' => self::CATEGORY_VALIDATION,
+            'setting', 'validationsetting' => self::CATEGORY_SETTING,
+            'report' => self::CATEGORY_REPORT,
+            default => null
+        };
+
         return self::log(
             action: 'update',
             description: $description ?? "Mengupdate {$entityType}",
@@ -70,18 +97,28 @@ class ActivityLogger
             metadata: array_merge(
                 ['entity_data' => $entity->toArray()],
                 $changes ? ['changes' => $changes] : []
-            )
+            ),
+            category: $category
         );
     }
 
     public static function logDelete(string $entityType, $entity, ?string $description = null): ActivityLog
     {
+        $category = match(strtolower($entityType)) {
+            'user', 'visitor' => self::CATEGORY_USER,
+            'validation' => self::CATEGORY_VALIDATION,
+            'setting', 'validationsetting' => self::CATEGORY_SETTING,
+            'report' => self::CATEGORY_REPORT,
+            default => null
+        };
+
         return self::log(
             action: 'delete',
             description: $description ?? "Menghapus {$entityType}",
             entityType: $entityType,
             entityId: (string) $entity->id,
-            metadata: ['entity_data' => $entity->toArray()]
+            metadata: ['entity_data' => $entity->toArray()],
+            category: $category
         );
     }
 
@@ -92,7 +129,8 @@ class ActivityLogger
             description: "Upload file {$filename} untuk {$type}",
             entityType: 'file',
             entityId: $filename,
-            metadata: array_merge(['filename' => $filename, 'type' => $type], $metadata ?? [])
+            metadata: array_merge(['filename' => $filename, 'type' => $type], $metadata ?? []),
+            category: self::CATEGORY_VALIDATION
         );
     }
 
@@ -103,7 +141,8 @@ class ActivityLogger
             description: "Validasi file {$filename} dengan status {$status}",
             entityType: 'validation',
             entityId: $filename,
-            metadata: array_merge(['filename' => $filename, 'status' => $status], $metadata ?? [])
+            metadata: array_merge(['filename' => $filename, 'status' => $status], $metadata ?? []),
+            category: self::CATEGORY_VALIDATION
         );
     }
 }

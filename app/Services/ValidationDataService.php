@@ -9,15 +9,25 @@ class ValidationDataService
 {
     public function getValidationSummary(int $id): ?array
     {
-        $validation = Validation::with(['invalidGroups', 'matchedGroups'])->find($id);
+        // Don't eager load relationships - we only need counts!
+        $validation = Validation::find($id);
 
         if (!$validation) {
             return null;
         }
 
-        // Try to get counts from relationships first, fallback to JSON
-        $invalidGroupsCount = $validation->invalidGroups()->count() ?: count($validation->validation_details['invalid_groups'] ?? []);
-        $matchedGroupsCount = $validation->matchedGroups()->count() ?: count($validation->validation_details['matched_groups'] ?? []);
+        // Use count queries instead of loading all records
+        // This is MUCH more efficient for large datasets (229K+ records)
+        $invalidGroupsCount = $validation->invalidGroups()->count();
+        $matchedGroupsCount = $validation->matchedGroups()->count();
+
+        // Fallback to JSON if no database records exist
+        if ($invalidGroupsCount === 0 && isset($validation->validation_details['invalid_groups'])) {
+            $invalidGroupsCount = count($validation->validation_details['invalid_groups']);
+        }
+        if ($matchedGroupsCount === 0 && isset($validation->validation_details['matched_groups'])) {
+            $matchedGroupsCount = count($validation->validation_details['matched_groups']);
+        }
 
         return [
             'fileName' => $validation->file_name,
@@ -37,6 +47,110 @@ class ValidationDataService
     public function getRoundingValue(): float
     {
         return ValidationSetting::get('rounding_tolerance', 1000.01);
+    }
+
+    /**
+     * Get aggregated chart data for invalid groups (optimized for performance)
+     * Returns only the data needed for charts instead of all records
+     */
+    public function getInvalidGroupsChartData(int $id): array
+    {
+        $validation = Validation::find($id);
+
+        if (!$validation) {
+            throw new \Exception('Validation data not found');
+        }
+
+        // Try to get from relationships first
+        if ($validation->invalidGroups()->exists()) {
+            // Get category counts using database aggregation
+            $categoryCounts = $validation->invalidGroups()
+                ->selectRaw('discrepancy_category, COUNT(*) as count')
+                ->groupBy('discrepancy_category')
+                ->get()
+                ->mapWithKeys(fn($item) => [$item->discrepancy_category => $item->count])
+                ->toArray();
+
+            // Get source label counts using database aggregation with CASE statement
+            // This computes sourceLabel in SQL instead of loading all records
+            $sourceCounts = $validation->invalidGroups()
+                ->selectRaw("
+                    CASE
+                        WHEN discrepancy_category = 'im_invalid' THEN 'Tidak Ditemukan di Sumber'
+                        WHEN uploaded_total > source_total AND discrepancy_value > 0 THEN 'File Sumber'
+                        WHEN source_total > uploaded_total AND discrepancy_value < 0 THEN 'File Diupload'
+                        ELSE 'Tidak Diketahui'
+                    END as source_label,
+                    COUNT(*) as count
+                ")
+                ->groupByRaw("
+                    CASE
+                        WHEN discrepancy_category = 'im_invalid' THEN 'Tidak Ditemukan di Sumber'
+                        WHEN uploaded_total > source_total AND discrepancy_value > 0 THEN 'File Sumber'
+                        WHEN source_total > uploaded_total AND discrepancy_value < 0 THEN 'File Diupload'
+                        ELSE 'Tidak Diketahui'
+                    END
+                ")
+                ->get()
+                ->mapWithKeys(fn($item) => [$item->source_label => $item->count])
+                ->toArray();
+
+            // Get top 5 discrepancies
+            $topDiscrepancies = $validation->invalidGroups()
+                ->selectRaw('key_value as key, discrepancy_value')
+                ->orderByRaw('ABS(discrepancy_value) DESC')
+                ->limit(5)
+                ->get()
+                ->map(fn($item) => [
+                    'key' => $item->key,
+                    'discrepancy_value' => (float) $item->discrepancy_value
+                ])
+                ->toArray();
+
+            return [
+                'categories' => $categoryCounts,
+                'sources' => $sourceCounts,
+                'topDiscrepancies' => $topDiscrepancies,
+            ];
+        }
+
+        // Fallback to JSON data
+        return $this->getInvalidGroupsChartDataFromJSON($validation);
+    }
+
+    private function getInvalidGroupsChartDataFromJSON(Validation $validation): array
+    {
+        $invalidGroups = $validation->validation_details['invalid_groups'] ?? [];
+
+        $categoryCounts = [];
+        $sourceCounts = [];
+        $discrepancies = [];
+
+        foreach ($invalidGroups as $key => $group) {
+            // Count categories
+            $category = $group['discrepancy_category'];
+            $categoryCounts[$category] = ($categoryCounts[$category] ?? 0) + 1;
+
+            // Count sources
+            $sourceLabel = $this->getSourceLabel($group);
+            $sourceCounts[$sourceLabel] = ($sourceCounts[$sourceLabel] ?? 0) + 1;
+
+            // Collect discrepancies for top N
+            $discrepancies[] = [
+                'key' => $key,
+                'discrepancy_value' => $group['discrepancy_value']
+            ];
+        }
+
+        // Sort by absolute discrepancy value and get top 5
+        usort($discrepancies, fn($a, $b) => abs($b['discrepancy_value']) <=> abs($a['discrepancy_value']));
+        $topDiscrepancies = array_slice($discrepancies, 0, 5);
+
+        return [
+            'categories' => $categoryCounts,
+            'sources' => $sourceCounts,
+            'topDiscrepancies' => $topDiscrepancies,
+        ];
     }
 
     public function getAllInvalidGroups(int $id): array
@@ -79,6 +193,53 @@ class ValidationDataService
         return $allItems;
     }
 
+    /**
+     * Get aggregated chart data for matched groups (optimized for performance)
+     * Returns only the data needed for charts instead of all records
+     */
+    public function getMatchedGroupsChartData(int $id): array
+    {
+        $validation = Validation::find($id);
+
+        if (!$validation) {
+            throw new \Exception('Validation data not found');
+        }
+
+        // Try to get from relationships first
+        if ($validation->matchedGroups()->exists()) {
+            // Get note counts using database aggregation
+            $noteCounts = $validation->matchedGroups()
+                ->selectRaw('note, COUNT(*) as count')
+                ->groupBy('note')
+                ->get()
+                ->mapWithKeys(fn($item) => [$item->note ?? 'Sum Matched' => $item->count])
+                ->toArray();
+
+            return [
+                'notes' => $noteCounts,
+            ];
+        }
+
+        // Fallback to JSON data
+        return $this->getMatchedGroupsChartDataFromJSON($validation);
+    }
+
+    private function getMatchedGroupsChartDataFromJSON(Validation $validation): array
+    {
+        $matchedGroups = $validation->validation_details['matched_groups'] ?? [];
+
+        $noteCounts = [];
+
+        foreach ($matchedGroups as $group) {
+            $note = $group['note'] ?? 'Sum Matched';
+            $noteCounts[$note] = ($noteCounts[$note] ?? 0) + 1;
+        }
+
+        return [
+            'notes' => $noteCounts,
+        ];
+    }
+
     public function getAllMatchedGroups(int $id): array
     {
         $validation = Validation::with(['matchedRows', 'matchedGroups'])->find($id);
@@ -90,7 +251,7 @@ class ValidationDataService
         // Try to get from relationships first
         if ($validation->matchedRows()->exists()) {
             $matchedGroupsKeyed = $validation->matchedGroups->keyBy('key_value');
-            
+
             // Check if any group has more than 1 matched row
             $groupCounts = $validation->matchedRows->groupBy('key_value')->map->count();
             $hasMultipleRowsPerGroup = $groupCounts->filter(fn($count) => $count > 1)->isNotEmpty();
@@ -173,7 +334,8 @@ class ValidationDataService
 
     public function getInvalidGroupsPaginated(int $id, array $filters): array
     {
-        $validation = Validation::with('invalidGroups')->find($id);
+        // Don't eager load - use query builder for efficient pagination
+        $validation = Validation::find($id);
 
         if (!$validation) {
             throw new \Exception('Validation data not found');
@@ -193,29 +355,126 @@ class ValidationDataService
                 $query->where('discrepancy_category', $filters['category']);
             }
 
-            // Get unique categories
+            // Get unique categories (optimized query)
             $uniqueCategories = $validation->invalidGroups()
                 ->distinct()
                 ->pluck('discrepancy_category')
                 ->toArray();
 
+            // Get unique sources using database aggregation with CASE statement
+            // This computes sourceLabel in SQL instead of loading all records
+            $uniqueSources = $validation->invalidGroups()
+                ->selectRaw("DISTINCT
+                    CASE
+                        WHEN discrepancy_category = 'im_invalid' THEN 'Tidak Ditemukan di Sumber'
+                        WHEN uploaded_total > source_total AND discrepancy_value > 0 THEN 'File Sumber'
+                        WHEN source_total > uploaded_total AND discrepancy_value < 0 THEN 'File Diupload'
+                        ELSE 'Tidak Diketahui'
+                    END as source_label
+                ")
+                ->get()
+                ->pluck('source_label')
+                ->toArray();
+
+            // Apply source filter (requires loading data for sourceLabel check)
+            // This is the only case where we need all records
+            if (!empty($filters['source'])) {
+                // For source filtering, we need to load and filter in memory
+                // because sourceLabel is computed
+                $allFilteredGroups = $query->get()->filter(function ($group) use ($filters) {
+                    $sourceLabel = $this->getSourceLabel([
+                        'uploaded_total' => $group->uploaded_total,
+                        'source_total' => $group->source_total,
+                        'discrepancy_value' => $group->discrepancy_value,
+                        'discrepancy_category' => $group->discrepancy_category,
+                    ]);
+                    return $sourceLabel === $filters['source'];
+                });
+
+                // Apply sorting
+                $sortKey = $filters['sort_key'] ?? 'key_value';
+                $sortDirection = $filters['sort_direction'] ?? 'asc';
+                
+                $sortedGroups = $allFilteredGroups->sortBy(
+                    match($sortKey) {
+                        'key' => 'key_value',
+                        default => $sortKey
+                    },
+                    SORT_REGULAR,
+                    $sortDirection === 'desc'
+                )->values();
+
+                // Manual pagination
+                $perPage = $filters['per_page'] ?? 10;
+                $page = $filters['page'] ?? 1;
+                $total = $sortedGroups->count();
+                $totalPages = ceil($total / $perPage);
+                $offset = ($page - 1) * $perPage;
+                
+                $paginatedGroups = $sortedGroups->slice($offset, $perPage);
+
+                $formattedData = $paginatedGroups->map(function ($group) {
+                    return [
+                        'key' => $group->key_value,
+                        'discrepancy_category' => $group->discrepancy_category,
+                        'error' => $group->error,
+                        'uploaded_total' => (float) $group->uploaded_total,
+                        'source_total' => (float) $group->source_total,
+                        'discrepancy_value' => (float) $group->discrepancy_value,
+                        'sourceLabel' => $this->getSourceLabel([
+                            'uploaded_total' => $group->uploaded_total,
+                            'source_total' => $group->source_total,
+                            'discrepancy_value' => $group->discrepancy_value,
+                            'discrepancy_category' => $group->discrepancy_category,
+                        ]),
+                    ];
+                })->values()->toArray();
+
+                return [
+                    'data' => $formattedData,
+                    'pagination' => [
+                        'current_page' => (int) $page,
+                        'per_page' => (int) $perPage,
+                        'total' => $total,
+                        'total_pages' => $totalPages,
+                    ],
+                    'filters' => [
+                        'search' => $filters['search'] ?? '',
+                        'category' => $filters['category'] ?? '',
+                        'source' => $filters['source'] ?? '',
+                    ],
+                    'sort' => [
+                        'key' => $sortKey,
+                        'direction' => $sortDirection,
+                    ],
+                    'uniqueFilters' => [
+                        'categories' => $uniqueCategories,
+                        'sources' => $uniqueSources,
+                    ],
+                ];
+            }
+
+            // NO source filter - use efficient database pagination
             // Apply sorting
             $sortKey = $filters['sort_key'] ?? 'key_value';
             $sortDirection = $filters['sort_direction'] ?? 'asc';
 
             // Map sort key to database column
-            $dbSortKey = match($sortKey) {
+            $dbSortKey = match ($sortKey) {
                 'key' => 'key_value',
                 default => $sortKey
             };
 
             $query->orderBy($dbSortKey, $sortDirection);
 
-            // Get all matching records (before source filter and pagination)
-            $allGroups = $query->get();
+            // Efficient database pagination - only loads the current page
+            $perPage = $filters['per_page'] ?? 10;
+            $page = $filters['page'] ?? 1;
+            $results = $query->paginate($perPage, ['*'], 'page', $page);
 
-            // Format data with sourceLabel
-            $formattedData = $allGroups->map(function ($group) {
+            // Format only the paginated results
+            $formattedData = $results->items();
+            $formattedData = array_map(function ($group) {
                 return [
                     'key' => $group->key_value,
                     'discrepancy_category' => $group->discrepancy_category,
@@ -230,34 +489,15 @@ class ValidationDataService
                         'discrepancy_category' => $group->discrepancy_category,
                     ]),
                 ];
-            })->toArray();
-
-            // Get unique sources from all formatted data
-            $uniqueSources = array_values(array_unique(array_column($formattedData, 'sourceLabel')));
-
-            // Apply source filter after computing sourceLabel
-            if (!empty($filters['source'])) {
-                $formattedData = array_filter($formattedData, function ($item) use ($filters) {
-                    return $item['sourceLabel'] === $filters['source'];
-                });
-                $formattedData = array_values($formattedData); // Re-index array
-            }
-
-            // Manual pagination after filtering
-            $perPage = $filters['per_page'] ?? 10;
-            $page = $filters['page'] ?? 1;
-            $total = count($formattedData);
-            $totalPages = ceil($total / $perPage);
-            $offset = ($page - 1) * $perPage;
-            $paginatedData = array_slice($formattedData, $offset, $perPage);
+            }, $formattedData);
 
             return [
-                'data' => $paginatedData,
+                'data' => $formattedData,
                 'pagination' => [
-                    'current_page' => (int) $page,
-                    'per_page' => (int) $perPage,
-                    'total' => $total,
-                    'total_pages' => $totalPages,
+                    'current_page' => $results->currentPage(),
+                    'per_page' => $results->perPage(),
+                    'total' => $results->total(),
+                    'total_pages' => $results->lastPage(),
                 ],
                 'filters' => [
                     'search' => $filters['search'] ?? '',
@@ -413,7 +653,7 @@ class ValidationDataService
             $sortDirection = $filters['sort_direction'] ?? 'asc';
 
             // Map sort key to database column
-            $dbSortKey = match($sortKey) {
+            $dbSortKey = match ($sortKey) {
                 'key' => 'key_value',
                 'row_index' => 'key_value', // Groups don't have row_index, sort by key instead
                 default => $sortKey
@@ -595,9 +835,12 @@ class ValidationDataService
 
     public function getValidationHistory(array $filters): array
     {
-        $query = Validation::with(['user', 'report' => function ($q) {
-            $q->latest();
-        }]);
+        $query = Validation::with([
+            'user',
+            'report' => function ($q) {
+                $q->latest();
+            }
+        ]);
         $currentUser = auth()->user();
 
         if (!empty($filters['document_type'])) {
@@ -778,5 +1021,88 @@ class ValidationDataService
                 'total_pages' => ceil($totalItems / $perPage),
             ],
         ];
+    }
+
+    public function getValidationStatus(int $id, string $routeName): ?array
+    {
+        $validation = Validation::find($id);
+
+        if (!$validation) {
+            return null;
+        }
+
+        $response = [
+            'validation_id' => $validation->id,
+            'status' => $validation->status,
+            'file_name' => $validation->file_name,
+            'document_type' => $validation->document_type,
+            'document_category' => $validation->document_category,
+            'processing_details' => $validation->processing_details,
+        ];
+
+        if ($validation->status === 'completed') {
+            $response['score'] = $validation->score;
+            $response['total_records'] = $validation->total_records;
+            $response['matched_records'] = $validation->matched_records;
+            $response['mismatched_records'] = $validation->mismatched_records;
+            $response['view_url'] = route($routeName, ['id' => $validation->id]);
+        }
+
+        return $response;
+    }
+
+    public function getChartData(int $id): array
+    {
+        $invalidChartData = [];
+        $matchedChartData = [];
+
+        $validation = Validation::find($id);
+
+        if (!$validation) {
+            throw new \Exception('Validation not found');
+        }
+
+        if ($validation->mismatched_records > 0) {
+            $invalidChartData = $this->getInvalidGroupsChartData($id);
+        }
+
+        if ($validation->matched_records > 0) {
+            $matchedChartData = $this->getMatchedGroupsChartData($id);
+        }
+
+        return [
+            'invalid' => $invalidChartData,
+            'matched' => $matchedChartData,
+        ];
+    }
+
+    public function getProcessingStatus(array $processingIds, string $documentType): array
+    {
+        if (empty($processingIds)) {
+            return [];
+        }
+
+        return Validation::whereIn('id', $processingIds)
+            ->where('document_type', $documentType)
+            ->select('id', 'status', 'score', 'matched_records', 'mismatched_records')
+            ->get()
+            ->map(function ($validation) {
+                $displayStatus = 'Valid';
+                if ($validation->status === 'processing') {
+                    $displayStatus = 'Processing';
+                } elseif ($validation->status === 'failed') {
+                    $displayStatus = 'Failed';
+                } elseif ($validation->mismatched_records > 0) {
+                    $displayStatus = 'Invalid';
+                }
+
+                return [
+                    'id' => $validation->id,
+                    'status' => $displayStatus,
+                    'score' => number_format($validation->score, 2) . '%',
+                    'processing_status' => $validation->status,
+                ];
+            })
+            ->toArray();
     }
 }

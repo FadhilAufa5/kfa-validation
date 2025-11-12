@@ -10,6 +10,7 @@ use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class ValidationSettingController extends Controller
@@ -128,6 +129,75 @@ class ValidationSettingController extends Controller
             ]);
 
             return back()->withErrors(['file' => 'Failed to upload file: ' . $e->getMessage()]);
+        }
+    }
+
+    public function refreshImDataCount(Request $request)
+    {
+        $request->validate([
+            'table_name' => 'required|in:im_purchases_and_return,im_jual,all',
+        ]);
+
+        $tableName = $request->table_name;
+        $userName = auth()->user()?->name ?? 'System';
+
+        try {
+            $updated = [];
+
+            if ($tableName === 'all') {
+                // Refresh both tables
+                $pembelianCount = DB::table('im_purchases_and_return')->count();
+                $penjualanCount = DB::table('im_jual')->count();
+
+                ImDataInfo::updateInfo('im_purchases_and_return', $pembelianCount, $userName);
+                ImDataInfo::updateInfo('im_jual', $penjualanCount, $userName);
+
+                $updated = [
+                    'im_purchases_and_return' => $pembelianCount,
+                    'im_jual' => $penjualanCount,
+                ];
+
+                ActivityLogger::log(
+                    action: 'Refresh IM Data Count',
+                    description: "Refreshed validation data counts - Pembelian: {$pembelianCount} rows, Penjualan: {$penjualanCount} rows",
+                    entityType: 'ImDataInfo',
+                    entityId: 'all',
+                    metadata: [
+                        'pembelian_count' => $pembelianCount,
+                        'penjualan_count' => $penjualanCount,
+                    ]
+                );
+            } else {
+                // Refresh specific table
+                $count = DB::table($tableName)->count();
+                ImDataInfo::updateInfo($tableName, $count, $userName);
+
+                $updated[$tableName] = $count;
+
+                $displayName = $tableName === 'im_purchases_and_return' ? 'Pembelian' : 'Penjualan';
+
+                ActivityLogger::log(
+                    action: 'Refresh IM Data Count',
+                    description: "Refreshed {$displayName} validation data count: {$count} rows",
+                    entityType: 'ImDataInfo',
+                    entityId: $tableName,
+                    metadata: [
+                        'table_name' => $tableName,
+                        'row_count' => $count,
+                    ]
+                );
+            }
+
+            return back()->with('success', 'Validation data count refreshed successfully')->with('updated_counts', $updated);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to refresh IM data count', [
+                'table_name' => $tableName,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return back()->withErrors(['refresh' => 'Failed to refresh data count: ' . $e->getMessage()]);
         }
     }
 }

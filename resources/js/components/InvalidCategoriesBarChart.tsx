@@ -1,21 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-interface ValidationGroupData {
-    discrepancy_category: string;
-}
-
 interface InvalidCategoriesBarChartProps {
-    allInvalidGroups: ValidationGroupData[];
+    categoryCounts: Record<string, number>;
     maxCategories?: number;
 }
 
 export default function InvalidCategoriesBarChart({
-    allInvalidGroups,
+    categoryCounts,
     maxCategories = 5,
 }: InvalidCategoriesBarChartProps) {
-    const categories = Array.from(
-        new Set(allInvalidGroups.map((g) => g.discrepancy_category)),
-    ).slice(0, maxCategories);
+    const categories = Object.entries(categoryCounts)
+        .slice(0, maxCategories);
+
+    const maxCount = Math.max(...Object.values(categoryCounts), 1);
 
     return (
         <Card>
@@ -24,19 +21,7 @@ export default function InvalidCategoriesBarChart({
             </CardHeader>
             <CardContent>
                 <div className="space-y-2">
-                    {categories.map((category) => {
-                        const count = allInvalidGroups.filter(
-                            (g) => g.discrepancy_category === category,
-                        ).length;
-                        const maxCount = Math.max(
-                            ...categories.map(
-                                (cat) =>
-                                    allInvalidGroups.filter(
-                                        (g) => g.discrepancy_category === cat,
-                                    ).length,
-                            ),
-                            1,
-                        );
+                    {categories.map(([category, count]) => {
                         return (
                             <div key={category} className="flex items-center gap-2">
                                 <span className="w-24 truncate text-xs">

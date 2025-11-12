@@ -1,27 +1,22 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-interface ValidationGroupData {
+interface TopDiscrepancy {
     key: string;
     discrepancy_value: number;
 }
 
 interface TopDiscrepanciesChartProps {
-    allInvalidGroups: ValidationGroupData[];
+    topDiscrepancies: TopDiscrepancy[];
     topCount?: number;
 }
 
 export default function TopDiscrepanciesChart({
-    allInvalidGroups,
+    topDiscrepancies,
     topCount = 5,
 }: TopDiscrepanciesChartProps) {
-    const topItems = allInvalidGroups
-        .sort((a, b) => Math.abs(b.discrepancy_value) - Math.abs(a.discrepancy_value))
-        .slice(0, topCount);
-
-    const maxValue = Math.max(
-        ...allInvalidGroups.map((g) => Math.abs(g.discrepancy_value)),
-        1,
-    );
+    const maxValue = topDiscrepancies.length > 0
+        ? Math.max(...topDiscrepancies.map(d => Math.abs(d.discrepancy_value)))
+        : 1;
 
     return (
         <Card>
@@ -30,7 +25,7 @@ export default function TopDiscrepanciesChart({
             </CardHeader>
             <CardContent>
                 <div className="space-y-2">
-                    {topItems.map((item, index) => {
+                    {topDiscrepancies.map((item, index) => {
                         const absValue = Math.abs(item.discrepancy_value);
                         const barWidth = maxValue > 0 ? (absValue / maxValue) * 100 : 0;
 
@@ -59,7 +54,7 @@ export default function TopDiscrepanciesChart({
                             </div>
                         );
                     })}
-                    {allInvalidGroups.length === 0 && (
+                    {topDiscrepancies.length === 0 && (
                         <div className="py-4 text-center text-muted-foreground">
                             Tidak ada data selisih untuk ditampilkan
                         </div>

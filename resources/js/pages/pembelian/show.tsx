@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 
 import axios from 'axios';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface ValidationGroupPaginated {
     key: string;
@@ -114,6 +114,7 @@ export default function PembelianShow() {
 
     // State for invalid groups table controls
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
     const [sourceFilter, setSourceFilter] = useState('');
     const [sortConfigInvalid, setSortConfigInvalid] = useState<{
@@ -128,6 +129,7 @@ export default function PembelianShow() {
 
     // State for matched groups table controls
     const [matchedSearchTerm, setMatchedSearchTerm] = useState('');
+    const [debouncedMatchedSearchTerm, setDebouncedMatchedSearchTerm] = useState('');
     const [noteFilter, setNoteFilter] = useState('');
     const [sortConfigMatched, setSortConfigMatched] = useState<{
         key: string;
@@ -138,6 +140,10 @@ export default function PembelianShow() {
     const [matchedGroupsData, setMatchedGroupsData] =
         useState<PaginationData<MatchedGroupPaginated> | null>(null);
     const [matchedGroupsLoading, setMatchedGroupsLoading] = useState(false);
+    
+    // Ref to track ongoing requests for cancellation
+    const invalidGroupsAbortController = useRef<AbortController | null>(null);
+    const matchedGroupsAbortController = useRef<AbortController | null>(null);
 
     // State for document comparison popup
     const [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -158,13 +164,17 @@ export default function PembelianShow() {
     );
     const [popupLoading, setPopupLoading] = useState(false);
 
-    // State for all chart data (not paginated)
-    const [allInvalidGroups, setAllInvalidGroups] = useState<
-        ValidationGroupPaginated[]
-    >([]);
-    const [allMatchedGroups, setAllMatchedGroups] = useState<
-        MatchedGroupPaginated[]
-    >([]);
+    // State for chart data (aggregated, not full records)
+    const [chartData, setChartData] = useState<{
+        invalid: {
+            categories: Record<string, number>;
+            sources: Record<string, number>;
+            topDiscrepancies: Array<{ key: string; discrepancy_value: number }>;
+        };
+        matched: {
+            notes: Record<string, number>;
+        };
+    } | null>(null);
     const [activeTab, setActiveTab] = useState<string>(
         validationData && validationData.mismatched > 0 ? 'invalid' : 'valid'
     );
@@ -221,49 +231,49 @@ export default function PembelianShow() {
         [validationData, totalGroups],
     );
 
-    // Load chart data only once (lazy loaded)
+    // Debounce search terms to reduce API calls
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedMatchedSearchTerm(matchedSearchTerm);
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [matchedSearchTerm]);
+
+    // Load chart data only once (lazy loaded, optimized with aggregation)
     useEffect(() => {
         if (chartDataLoaded || !validationData) return;
 
         const fetchChartData = async () => {
             try {
-                // Fetch both chart data in parallel for better performance
-                const promises = [];
-                
-                if (validationData.mismatched > 0) {
-                    promises.push(
-                        axios.get(`/pembelian/${validationId}/invalid-groups/all`)
-                            .then(response => setAllInvalidGroups(response.data))
-                            .catch(error => console.error('Error fetching all invalid groups:', error))
-                    );
-                }
-                
-                if (validationData.matched > 0) {
-                    promises.push(
-                        axios.get(`/pembelian/${validationId}/matched-records/all`)
-                            .then(response => setAllMatchedGroups(response.data))
-                            .catch(error => console.error('Error fetching all matched groups:', error))
-                    );
-                }
-
-                await Promise.all(promises);
+                const response = await axios.get(`/pembelian/${validationId}/chart-data`);
+                setChartData(response.data);
                 setChartDataLoaded(true);
             } catch (error) {
                 console.error('Error fetching chart data:', error);
             }
         };
 
-        // Delay chart data loading slightly to prioritize tab data
-        const timer = setTimeout(() => {
-            fetchChartData();
-        }, 300);
-
+        const timer = setTimeout(fetchChartData, 300);
         return () => clearTimeout(timer);
     }, [validationId, chartDataLoaded, validationData]);
 
     // Load invalid groups with pagination (only when active tab is invalid)
     useEffect(() => {
         if (!validationData || validationData.mismatched === 0 || activeTab !== 'invalid') return;
+
+        if (invalidGroupsAbortController.current) {
+            invalidGroupsAbortController.current.abort();
+        }
+
+        const controller = new AbortController();
+        invalidGroupsAbortController.current = controller;
 
         const fetchInvalidGroups = async () => {
             setInvalidGroupsLoading(true);
@@ -272,7 +282,7 @@ export default function PembelianShow() {
                     `/pembelian/${validationId}/invalid-groups`,
                     {
                         params: {
-                            search: searchTerm,
+                            search: debouncedSearchTerm,
                             category: categoryFilter,
                             source: sourceFilter,
                             sort_key: sortConfigInvalid.key,
@@ -280,20 +290,29 @@ export default function PembelianShow() {
                             page: currentPageInvalid,
                             per_page: itemsPerPageInvalid,
                         },
+                        signal: controller.signal,
                     },
                 );
                 setInvalidGroupsData(response.data);
-            } catch (error) {
-                console.error('Error fetching invalid groups:', error);
+            } catch (error: any) {
+                if (error.name !== 'CanceledError') {
+                    console.error('Error fetching invalid groups:', error);
+                }
             } finally {
-                setInvalidGroupsLoading(false);
+                if (!controller.signal.aborted) {
+                    setInvalidGroupsLoading(false);
+                }
             }
         };
 
         fetchInvalidGroups();
+        
+        return () => {
+            controller.abort();
+        };
     }, [
         validationId,
-        searchTerm,
+        debouncedSearchTerm,
         categoryFilter,
         sourceFilter,
         sortConfigInvalid,
@@ -307,6 +326,13 @@ export default function PembelianShow() {
     useEffect(() => {
         if (!validationData || validationData.matched === 0 || activeTab !== 'valid') return;
 
+        if (matchedGroupsAbortController.current) {
+            matchedGroupsAbortController.current.abort();
+        }
+
+        const controller = new AbortController();
+        matchedGroupsAbortController.current = controller;
+
         const fetchMatchedGroups = async () => {
             setMatchedGroupsLoading(true);
             try {
@@ -314,27 +340,36 @@ export default function PembelianShow() {
                     `/pembelian/${validationId}/matched-records`,
                     {
                         params: {
-                            search: matchedSearchTerm,
+                            search: debouncedMatchedSearchTerm,
                             note: noteFilter,
                             sort_key: sortConfigMatched.key,
                             sort_direction: sortConfigMatched.direction,
                             page: currentPageMatched,
                             per_page: itemsPerPageMatched,
                         },
+                        signal: controller.signal,
                     },
                 );
                 setMatchedGroupsData(response.data);
-            } catch (error) {
-                console.error('Error fetching matched groups:', error);
+            } catch (error: any) {
+                if (error.name !== 'CanceledError') {
+                    console.error('Error fetching matched groups:', error);
+                }
             } finally {
-                setMatchedGroupsLoading(false);
+                if (!controller.signal.aborted) {
+                    setMatchedGroupsLoading(false);
+                }
             }
         };
 
         fetchMatchedGroups();
+        
+        return () => {
+            controller.abort();
+        };
     }, [
         validationId,
-        matchedSearchTerm,
+        debouncedMatchedSearchTerm,
         noteFilter,
         sortConfigMatched,
         currentPageMatched,
@@ -352,18 +387,14 @@ export default function PembelianShow() {
     // Get unique notes for matched groups filter dropdown (from backend)
     const uniqueNotes = matchedGroupsData?.uniqueFilters?.notes || [];
 
-    // Handle sort request for invalid groups
-    const requestSortInvalid = (key: string) => {
-        let direction: 'asc' | 'desc' = 'asc';
-        if (
-            sortConfigInvalid.key === key &&
-            sortConfigInvalid.direction === 'asc'
-        ) {
-            direction = 'desc';
-        }
-        setSortConfigInvalid({ key, direction });
-        setCurrentPageInvalid(1); // Reset to first page when sorting
-    };
+    // Handle sort request for invalid groups (memoized)
+    const requestSortInvalid = useCallback((key: string) => {
+        setSortConfigInvalid((prev) => {
+            const direction = prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc';
+            return { key, direction };
+        });
+        setCurrentPageInvalid(1);
+    }, []);
 
     // Get sort indicator for invalid groups table headers
     const getSortIndicatorInvalid = (key: string) => {
@@ -371,18 +402,14 @@ export default function PembelianShow() {
         return sortConfigInvalid.direction === 'asc' ? '↑' : '↓';
     };
 
-    // Handle sort request for matched records
-    const requestMatchedSort = (key: string) => {
-        let direction: 'asc' | 'desc' = 'asc';
-        if (
-            sortConfigMatched.key === key &&
-            sortConfigMatched.direction === 'asc'
-        ) {
-            direction = 'desc';
-        }
-        setSortConfigMatched({ key, direction });
-        setCurrentPageMatched(1); // Reset to first page when sorting
-    };
+    // Handle sort request for matched records (memoized)
+    const requestMatchedSort = useCallback((key: string) => {
+        setSortConfigMatched((prev) => {
+            const direction = prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc';
+            return { key, direction };
+        });
+        setCurrentPageMatched(1);
+    }, []);
 
     // Get sort indicator for matched records table headers
     const getMatchedSortIndicator = (key: string) => {
@@ -561,20 +588,28 @@ export default function PembelianShow() {
 
                     <div className="space-y-6">
                         {/* Horizontal Bar Chart for Invalid Data Categories */}
-                        <InvalidCategoriesBarChart allInvalidGroups={allInvalidGroups} />
+                        <InvalidCategoriesBarChart
+                            categoryCounts={chartData?.invalid?.categories || {}}
+                        />
 
                         {/* Horizontal Bar Chart for Invalid Sumber */}
-                        <InvalidSourcesBarChart allInvalidGroups={allInvalidGroups} />
+                        <InvalidSourcesBarChart
+                            sourceCounts={chartData?.invalid?.sources || {}}
+                        />
                     </div>
                 </div>
 
                 {/* Second Row of Charts */}
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     {/* Top 5 Rows with Highest Selisih */}
-                    <TopDiscrepanciesChart allInvalidGroups={allInvalidGroups} />
+                    <TopDiscrepanciesChart
+                        topDiscrepancies={chartData?.invalid?.topDiscrepancies || []}
+                    />
 
                     {/* Horizontal Bar Chart for Valid Data Notes */}
-                    <ValidNotesDistributionChart allMatchedGroups={allMatchedGroups} />
+                    <ValidNotesDistributionChart
+                        noteCounts={chartData?.matched?.notes || {}}
+                    />
                 </div>
 
                 {/* Tabs for Invalid and Valid Groups */}

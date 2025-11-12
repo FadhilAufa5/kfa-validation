@@ -30,6 +30,7 @@ interface ActivityLogType {
   user_name: string | null;
   user_role: string | null;
   action: string;
+  category: string | null;
   entity_type: string | null;
   entity_id: string | null;
   description: string | null;
@@ -51,6 +52,7 @@ interface PaginatedLogs {
 interface Filters {
   search?: string;
   action?: string;
+  category?: string;
   user_role?: string;
   date_from?: string;
   date_to?: string;
@@ -58,17 +60,20 @@ interface Filters {
 
 export default function ActivityLogsIndex({ 
   logs, 
-  actions, 
+  actions,
+  categories,
   roles,
   filters 
 }: { 
   logs: PaginatedLogs;
   actions: string[];
+  categories: string[];
   roles: string[];
   filters: Filters;
 }) {
   const [search, setSearch] = useState(filters.search || "");
   const [selectedAction, setSelectedAction] = useState(filters.action || "");
+  const [selectedCategory, setSelectedCategory] = useState(filters.category || "");
   const [selectedRole, setSelectedRole] = useState(filters.user_role || "");
   const [dateFrom, setDateFrom] = useState(filters.date_from || "");
   const [dateTo, setDateTo] = useState(filters.date_to || "");
@@ -80,6 +85,7 @@ export default function ActivityLogsIndex({
     router.get("/activity-logs", {
       search,
       action: selectedAction,
+      category: selectedCategory,
       user_role: selectedRole,
       date_from: dateFrom,
       date_to: dateTo,
@@ -92,6 +98,7 @@ export default function ActivityLogsIndex({
   const clearFilters = () => {
     setSearch("");
     setSelectedAction("");
+    setSelectedCategory("");
     setSelectedRole("");
     setDateFrom("");
     setDateTo("");
@@ -103,6 +110,7 @@ export default function ActivityLogsIndex({
       page,
       search,
       action: selectedAction,
+      category: selectedCategory,
       user_role: selectedRole,
       date_from: dateFrom,
       date_to: dateTo,
@@ -126,6 +134,24 @@ export default function ActivityLogsIndex({
     if (!role) return "bg-gray-100 text-gray-800";
     if (role.toLowerCase() === "admin") return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
     return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+  };
+
+  const getCategoryBadgeColor = (category: string | null) => {
+    if (!category) return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+    switch (category) {
+      case "Validation":
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+      case "Login":
+        return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+      case "User":
+        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      case "Setting":
+        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
+      case "Report":
+        return "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200";
+      default:
+        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -172,7 +198,7 @@ export default function ActivityLogsIndex({
         {showFilters && (
           <Card className="border">
             <CardContent className="p-4 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="text-sm font-medium mb-1 block">Pencarian</label>
                   <div className="relative">
@@ -185,6 +211,23 @@ export default function ActivityLogsIndex({
                       onKeyDown={(e) => e.key === "Enter" && applyFilters()}
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">Kategori</label>
+                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Semua kategori" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Semua kategori</SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {category}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
@@ -264,6 +307,7 @@ export default function ActivityLogsIndex({
                   <th className="px-3 py-2 text-left text-xs font-medium">Waktu</th>
                   <th className="px-3 py-2 text-left text-xs font-medium">User</th>
                   <th className="px-3 py-2 text-left text-xs font-medium">Role</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium">Kategori</th>
                   <th className="px-3 py-2 text-left text-xs font-medium">Aksi</th>
                   <th className="px-3 py-2 text-left text-xs font-medium">Deskripsi</th>
                   <th className="py-2 text-left text-xs font-medium">IP Address</th>
@@ -272,7 +316,7 @@ export default function ActivityLogsIndex({
               <tbody>
                 {logs.data.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-xs text-muted-foreground">
+                    <td colSpan={7} className="px-3 py-6 text-center text-xs text-muted-foreground">
                       Tidak ada log aktivitas
                     </td>
                   </tr>
@@ -299,6 +343,15 @@ export default function ActivityLogsIndex({
                         {log.user_role ? (
                           <Badge className={getRoleBadgeColor(log.user_role)}>
                             {log.user_role}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {log.category ? (
+                          <Badge className={getCategoryBadgeColor(log.category)}>
+                            {log.category}
                           </Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">-</span>

@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import {
     Pagination,
     PaginationContent,
-    PaginationEllipsis,
+    PaginationFirst,
     PaginationItem,
+    PaginationLast,
     PaginationLink,
     PaginationNext,
     PaginationPrevious,
@@ -358,6 +359,12 @@ const MatchedGroupsTabContent = React.memo(
                             <Pagination>
                                 <PaginationContent>
                                     <PaginationItem>
+                                        <PaginationFirst
+                                            onClick={() => setCurrentPage(1)}
+                                            disabled={currentPage === 1}
+                                        />
+                                    </PaginationItem>
+                                    <PaginationItem>
                                         <PaginationPrevious
                                             onClick={() =>
                                                 setCurrentPage((prev: number) =>
@@ -368,124 +375,26 @@ const MatchedGroupsTabContent = React.memo(
                                         />
                                     </PaginationItem>
 
-                                    <PaginationItem>
-                                        <PaginationLink
-                                            onClick={() => setCurrentPage(1)}
-                                            isActive={currentPage === 1}
-                                        >
-                                            1
-                                        </PaginationLink>
-                                    </PaginationItem>
+                                    {(() => {
+                                        const pages = [];
+                                        const startPage = Math.max(1, currentPage - 2);
+                                        const endPage = Math.min(totalPages, currentPage + 2);
 
-                                    {totalPages > 1 &&
-                                        (() => {
-                                            if (totalPages <= 5) {
-                                                return Array.from(
-                                                    { length: totalPages - 2 },
-                                                    (_, i) => {
-                                                        const pageNum = i + 2;
-                                                        return (
-                                                            <PaginationItem
-                                                                key={pageNum}
-                                                            >
-                                                                <PaginationLink
-                                                                    onClick={() =>
-                                                                        setCurrentPage(
-                                                                            pageNum,
-                                                                        )
-                                                                    }
-                                                                    isActive={
-                                                                        currentPage ===
-                                                                        pageNum
-                                                                    }
-                                                                >
-                                                                    {pageNum}
-                                                                </PaginationLink>
-                                                            </PaginationItem>
-                                                        );
-                                                    },
-                                                );
-                                            } else {
-                                                const pages = [];
-                                                let startPage = Math.max(
-                                                    2,
-                                                    currentPage - 1,
-                                                );
-                                                let endPage = Math.min(
-                                                    totalPages - 1,
-                                                    currentPage + 1,
-                                                );
-                                                if (currentPage <= 2) {
-                                                    startPage = 2;
-                                                    endPage = 4;
-                                                } else if (
-                                                    currentPage >=
-                                                    totalPages - 1
-                                                ) {
-                                                    startPage = totalPages - 3;
-                                                    endPage = totalPages - 1;
-                                                }
-                                                if (startPage > 2) {
-                                                    pages.push(
-                                                        <PaginationItem key="ellipsis-start">
-                                                            <PaginationEllipsis />
-                                                        </PaginationItem>,
-                                                    );
-                                                }
-                                                for (
-                                                    let i = startPage;
-                                                    i <= endPage;
-                                                    i++
-                                                ) {
-                                                    if (
-                                                        i !== 1 &&
-                                                        i !== totalPages
-                                                    ) {
-                                                        pages.push(
-                                                            <PaginationItem
-                                                                key={i}
-                                                            >
-                                                                <PaginationLink
-                                                                    onClick={() =>
-                                                                        setCurrentPage(
-                                                                            i,
-                                                                        )
-                                                                    }
-                                                                    isActive={
-                                                                        currentPage ===
-                                                                        i
-                                                                    }
-                                                                >
-                                                                    {i}
-                                                                </PaginationLink>
-                                                            </PaginationItem>,
-                                                        );
-                                                    }
-                                                }
-                                                if (endPage < totalPages - 1) {
-                                                    pages.push(
-                                                        <PaginationItem key="ellipsis-end">
-                                                            <PaginationEllipsis />
-                                                        </PaginationItem>,
-                                                    );
-                                                }
-                                                return pages;
-                                            }
-                                        })()}
-                                    {totalPages > 1 && (
-                                        <PaginationItem>
-                                            <PaginationLink
-                                                onClick={() =>
-                                                    setCurrentPage(totalPages)
-                                                }
-                                                isActive={
-                                                    currentPage === totalPages
-                                                }
-                                            >
-                                                {totalPages}
-                                            </PaginationLink>
-                                        </PaginationItem>
-                                    )}
+                                        for (let i = startPage; i <= endPage; i++) {
+                                            pages.push(
+                                                <PaginationItem key={i}>
+                                                    <PaginationLink
+                                                        onClick={() => setCurrentPage(i)}
+                                                        isActive={currentPage === i}
+                                                    >
+                                                        {i}
+                                                    </PaginationLink>
+                                                </PaginationItem>
+                                            );
+                                        }
+                                        return pages;
+                                    })()}
+
                                     <PaginationItem>
                                         <PaginationNext
                                             onClick={() =>
@@ -499,6 +408,12 @@ const MatchedGroupsTabContent = React.memo(
                                             disabled={
                                                 currentPage === totalPages
                                             }
+                                        />
+                                    </PaginationItem>
+                                    <PaginationItem>
+                                        <PaginationLast
+                                            onClick={() => setCurrentPage(totalPages)}
+                                            disabled={currentPage === totalPages}
                                         />
                                     </PaginationItem>
                                 </PaginationContent>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\ValidationDataCheckService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -56,6 +57,10 @@ class SuperAdminLoginController extends Controller
 
         // Log the activity
         ActivityLogger::logLogin($user);
+
+        // Check validation data and create notification if needed
+        $validationCheckService = app(ValidationDataCheckService::class);
+        $validationCheckService->createNotificationForSuperAdmin($user);
 
         return redirect()->intended(route('dashboard', absolute: false));
     }

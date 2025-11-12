@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import ValidationDataWarningDialog from "@/components/ValidationDataWarningDialog";
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: dashboard().url },
@@ -77,12 +78,21 @@ interface ChartData {
   value: number;
 }
 
+interface ValidationDataStatus {
+  is_pembelian_empty: boolean;
+  is_penjualan_empty: boolean;
+  pembelian_count: number;
+  penjualan_count: number;
+  has_empty_data: boolean;
+}
+
 interface DashboardProps {
   activeUsersCount: number;
   statistics: Statistics;
   pembelianDistribution: ChartData[];
   penjualanDistribution: ChartData[];
   recentActivities: Activity[];
+  validationDataStatus?: ValidationDataStatus | null;
 }
 
 export default function Dashboard() {
@@ -100,14 +110,26 @@ export default function Dashboard() {
     pembelianDistribution = [],
     penjualanDistribution = [],
     recentActivities = [],
+    validationDataStatus = null,
   } = page.props as DashboardProps;
 
   const auth = page.props.auth as any;
   const userName = auth?.user?.name || 'User';
+  const isSuperAdmin = auth?.user?.role === 'super_admin';
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Dashboard" />
+      
+      {/* Validation Data Warning Dialog for Super Admin */}
+      {isSuperAdmin && validationDataStatus && (
+        <ValidationDataWarningDialog
+          isPembelianEmpty={validationDataStatus.is_pembelian_empty}
+          isPenjualanEmpty={validationDataStatus.is_penjualan_empty}
+          pembelianCount={validationDataStatus.pembelian_count}
+          penjualanCount={validationDataStatus.penjualan_count}
+        />
+      )}
 
       <div className="flex flex-col gap-6 p-6 bg-muted/20 rounded-xl">
         {/* Header with Notification Bell */}
