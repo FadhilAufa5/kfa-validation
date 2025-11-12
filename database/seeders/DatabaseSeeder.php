@@ -13,15 +13,22 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::factory(10)->create();
+        // Seed roles and permissions first
+        $this->call([
+            RolePermissionSeeder::class,
+        ]);
 
-        // Create Super Admin
+        // User::factory(10)->create();
+
+        // Create Super Admin with role_id
+        $superAdminRole = \App\Models\Role::where('name', 'super_admin')->first();
         User::firstOrCreate(
             ['email' => 'super@admin.com'],
             [
                 'name' => 'Super Admin',
                 'password' => bcrypt('password'),
                 'role' => 'super_admin',
+                'role_id' => $superAdminRole?->id,
                 'email_verified_at' => now(),
             ]
         );
