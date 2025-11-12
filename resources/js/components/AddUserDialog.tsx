@@ -29,6 +29,7 @@ interface RoleType {
     name: string;
     display_name: string;
     description: string | null;
+    is_default?: boolean;
 }
 
 interface AddUserDialogProps {
@@ -59,6 +60,25 @@ export default function AddUserDialog({
     });
     const [errors, setErrors] = useState<{ [key: string]: string }>({});
     const [checkingEmail, setCheckingEmail] = useState(false);
+
+    // Reset form when dialog opens with fresh default role
+    useEffect(() => {
+        if (open && roles.length > 0) {
+            const freshDefaultRole =
+                roles.find((r) => r.is_default) ||
+                roles.find((r) => r.name === 'user') ||
+                roles[0];
+
+            setForm({
+                name: '',
+                email: '',
+                role: freshDefaultRole?.name || 'user',
+                role_id: freshDefaultRole?.id || null,
+                password: '',
+            });
+            setErrors({});
+        }
+    }, [open, roles]);
 
     // Check if selected role is super_admin
     const isSuperAdminRole = form.role === 'super_admin';
@@ -229,7 +249,7 @@ export default function AddUserDialog({
                             value={form.role_id?.toString() || ''}
                             onValueChange={(value) => {
                                 const selectedRole = roles.find(
-                                    (r) => r.id === parseInt(value),
+                                    (r) => r.id.toString() === value,
                                 );
                                 if (selectedRole) {
                                     setForm({
@@ -241,34 +261,50 @@ export default function AddUserDialog({
                             }}
                         >
                             <SelectTrigger id="role" className="w-full">
-                                <SelectValue placeholder="Pilih role" />
+                                <SelectValue placeholder="Pilih role">
+                                    {form.role_id &&
+                                        roles.find((r) => r.id === form.role_id)
+                                            ?.display_name}
+                                </SelectValue>
                             </SelectTrigger>
-                            <SelectContent>
-                                {roles.map((role) => (
-                                    <SelectItem
-                                        key={role.id}
-                                        value={role.id.toString()}
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-medium">
-                                                {role.display_name}
-                                            </span>
-                                            {role.name === 'super_admin' && (
-                                                <Badge
-                                                    variant="secondary"
-                                                    className="text-xs"
-                                                >
-                                                    Admin
-                                                </Badge>
-                                            )}
-                                        </div>
-                                        {role.description && (
-                                            <p className="mt-0.5 text-xs text-muted-foreground">
-                                                {role.description}
-                                            </p>
-                                        )}
+                            <SelectContent
+                                position="popper"
+                                className="max-h-[300px]"
+                            >
+                                {roles && roles.length > 0 ? (
+                                    roles.map((role) => (
+                                        <SelectItem
+                                            key={role.id}
+                                            value={role.id.toString()}
+                                        >
+                                            <div className="flex flex-col">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium">
+                                                        {role.display_name}
+                                                    </span>
+                                                    {role.name ===
+                                                        'super_admin' && (
+                                                        <Badge
+                                                            variant="secondary"
+                                                            className="text-xs"
+                                                        >
+                                                            Admin
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                {role.description && (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {role.description}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <SelectItem value="none" disabled>
+                                        No roles available
                                     </SelectItem>
-                                ))}
+                                )}
                             </SelectContent>
                         </Select>
                         {form.role_id && (
@@ -278,6 +314,11 @@ export default function AddUserDialog({
                                     roles.find((r) => r.id === form.role_id)
                                         ?.display_name
                                 }
+                            </p>
+                        )}
+                        {errors.role && (
+                            <p className="text-sm text-red-500">
+                                {errors.role}
                             </p>
                         )}
                     </div>

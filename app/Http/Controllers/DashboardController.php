@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\Validation;
 use App\Models\ActivityLog;
+use App\Services\ValidationDataCheckService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -110,6 +111,13 @@ class DashboardController extends Controller
             ->whereDate('created_at', today())
             ->count();
 
+        // Check validation data status for super admins
+        $validationDataStatus = null;
+        if ($currentUser->role === 'super_admin') {
+            $validationCheckService = app(ValidationDataCheckService::class);
+            $validationDataStatus = $validationCheckService->checkValidationData();
+        }
+
         return Inertia::render('dashboard', [
             'activeUsersCount' => $activeUsersCount,
             'statistics' => [
@@ -123,6 +131,7 @@ class DashboardController extends Controller
             'pembelianDistribution' => $pembelianDistribution,
             'penjualanDistribution' => $penjualanDistribution,
             'recentActivities' => $recentActivities,
+            'validationDataStatus' => $validationDataStatus,
         ]);
     }
 }

@@ -1022,4 +1022,87 @@ class ValidationDataService
             ],
         ];
     }
+
+    public function getValidationStatus(int $id, string $routeName): ?array
+    {
+        $validation = Validation::find($id);
+
+        if (!$validation) {
+            return null;
+        }
+
+        $response = [
+            'validation_id' => $validation->id,
+            'status' => $validation->status,
+            'file_name' => $validation->file_name,
+            'document_type' => $validation->document_type,
+            'document_category' => $validation->document_category,
+            'processing_details' => $validation->processing_details,
+        ];
+
+        if ($validation->status === 'completed') {
+            $response['score'] = $validation->score;
+            $response['total_records'] = $validation->total_records;
+            $response['matched_records'] = $validation->matched_records;
+            $response['mismatched_records'] = $validation->mismatched_records;
+            $response['view_url'] = route($routeName, ['id' => $validation->id]);
+        }
+
+        return $response;
+    }
+
+    public function getChartData(int $id): array
+    {
+        $invalidChartData = [];
+        $matchedChartData = [];
+
+        $validation = Validation::find($id);
+
+        if (!$validation) {
+            throw new \Exception('Validation not found');
+        }
+
+        if ($validation->mismatched_records > 0) {
+            $invalidChartData = $this->getInvalidGroupsChartData($id);
+        }
+
+        if ($validation->matched_records > 0) {
+            $matchedChartData = $this->getMatchedGroupsChartData($id);
+        }
+
+        return [
+            'invalid' => $invalidChartData,
+            'matched' => $matchedChartData,
+        ];
+    }
+
+    public function getProcessingStatus(array $processingIds, string $documentType): array
+    {
+        if (empty($processingIds)) {
+            return [];
+        }
+
+        return Validation::whereIn('id', $processingIds)
+            ->where('document_type', $documentType)
+            ->select('id', 'status', 'score', 'matched_records', 'mismatched_records')
+            ->get()
+            ->map(function ($validation) {
+                $displayStatus = 'Valid';
+                if ($validation->status === 'processing') {
+                    $displayStatus = 'Processing';
+                } elseif ($validation->status === 'failed') {
+                    $displayStatus = 'Failed';
+                } elseif ($validation->mismatched_records > 0) {
+                    $displayStatus = 'Invalid';
+                }
+
+                return [
+                    'id' => $validation->id,
+                    'status' => $displayStatus,
+                    'score' => number_format($validation->score, 2) . '%',
+                    'processing_status' => $validation->status,
+                ];
+            })
+            ->toArray();
+    }
 }

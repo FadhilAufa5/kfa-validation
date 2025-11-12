@@ -11,7 +11,7 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { Head, router } from '@inertiajs/react';
-import { Clock, Database, Settings, Upload, User } from 'lucide-react';
+import { Clock, Database, Settings, Upload, User, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { Toaster, toast } from 'sonner';
 import { route } from 'ziggy-js';
@@ -47,6 +47,7 @@ export default function ValidationSettingIndex({
 }: ValidationSettingProps) {
     const [isToleranceDialogOpen, setIsToleranceDialogOpen] = useState(false);
     const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+    const [refreshingTable, setRefreshingTable] = useState<string | null>(null);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Validation Setting', href: '/validation-setting' },
@@ -93,6 +94,30 @@ export default function ValidationSettingIndex({
         });
     };
 
+    const handleRefreshCount = (tableName: string) => {
+        setRefreshingTable(tableName);
+        
+        router.post(
+            route('validation-setting.refresh-count'),
+            { table_name: tableName },
+            {
+                onSuccess: () => {
+                    const displayName = tableName === 'im_purchases_and_return' 
+                        ? 'Pembelian' 
+                        : tableName === 'im_jual' 
+                        ? 'Penjualan' 
+                        : 'All tables';
+                    toast.success(`${displayName} data count refreshed successfully!`);
+                    setRefreshingTable(null);
+                },
+                onError: (errors: any) => {
+                    toast.error(errors.refresh || 'Failed to refresh data count');
+                    setRefreshingTable(null);
+                },
+            },
+        );
+    };
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Validation Setting" />
@@ -110,6 +135,15 @@ export default function ValidationSettingIndex({
                             Configure validation parameters and update IM data
                         </p>
                     </div>
+                    <Button
+                        variant="outline"
+                        onClick={() => handleRefreshCount('all')}
+                        disabled={refreshingTable === 'all'}
+                        className="gap-2"
+                    >
+                        <RefreshCw className={`h-4 w-4 ${refreshingTable === 'all' ? 'animate-spin' : ''}`} />
+                        {refreshingTable === 'all' ? 'Refreshing All...' : 'Refresh All Counts'}
+                    </Button>
                 </div>
 
                 {/* IM Data Information Cards */}
@@ -117,13 +151,27 @@ export default function ValidationSettingIndex({
                     {/* Pembelian IM Data Info */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Database className="h-5 w-5 text-blue-600" />
-                                IM Pembelian Data
-                            </CardTitle>
-                            <CardDescription>
-                                im_purchases_and_return table information
-                            </CardDescription>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Database className="h-5 w-5 text-blue-600" />
+                                        IM Pembelian Data
+                                    </CardTitle>
+                                    <CardDescription>
+                                        im_purchases_and_return table information
+                                    </CardDescription>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleRefreshCount('im_purchases_and_return')}
+                                    disabled={refreshingTable === 'im_purchases_and_return'}
+                                    className="gap-2"
+                                >
+                                    <RefreshCw className={`h-4 w-4 ${refreshingTable === 'im_purchases_and_return' ? 'animate-spin' : ''}`} />
+                                    {refreshingTable === 'im_purchases_and_return' ? 'Refreshing...' : 'Refresh'}
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {imDataInfo.pembelian ? (
@@ -186,13 +234,27 @@ export default function ValidationSettingIndex({
                     {/* Penjualan IM Data Info */}
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Database className="h-5 w-5 text-green-600" />
-                                IM Penjualan Data
-                            </CardTitle>
-                            <CardDescription>
-                                im_jual table information
-                            </CardDescription>
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Database className="h-5 w-5 text-green-600" />
+                                        IM Penjualan Data
+                                    </CardTitle>
+                                    <CardDescription>
+                                        im_jual table information
+                                    </CardDescription>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleRefreshCount('im_jual')}
+                                    disabled={refreshingTable === 'im_jual'}
+                                    className="gap-2"
+                                >
+                                    <RefreshCw className={`h-4 w-4 ${refreshingTable === 'im_jual' ? 'animate-spin' : ''}`} />
+                                    {refreshingTable === 'im_jual' ? 'Refreshing...' : 'Refresh'}
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {imDataInfo.penjualan ? (
