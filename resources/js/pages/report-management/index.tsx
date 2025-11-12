@@ -6,6 +6,7 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
+    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
@@ -26,12 +27,13 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
 import {
-    Calendar,
+    CheckCircle,
     ChevronLeft,
     ChevronRight,
     ChevronsLeft,
@@ -40,10 +42,12 @@ import {
     FileCheck,
     Filter,
     Search,
+    XCircle,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 
-interface AcceptedReport {
+interface Report {
     id: number;
     validation_id: number;
     file_name: string;
@@ -53,18 +57,17 @@ interface AcceptedReport {
     report_message?: string;
     reported_by: string;
     reported_at: string;
-    reviewed_by: string;
-    reviewed_at: string;
+    reviewed_by?: string;
+    reviewed_at?: string;
     review_notes?: string;
+    status: 'pending' | 'accepted' | 'revoked';
 }
 
 export default function ReportManagementPage() {
-    const [reports, setReports] = useState<AcceptedReport[]>([]);
+    const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-    const [reportType, setReportType] = useState('all');
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
     const [currentPage, setCurrentPage] = useState(1);
     const [pagination, setPagination] = useState({
         current_page: 1,
@@ -77,27 +80,28 @@ export default function ReportManagementPage() {
 
     // Detail dialog states
     const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-    const [selectedReport, setSelectedReport] = useState<AcceptedReport | null>(
-        null,
-    );
+    const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+
+    // Review dialog states
+    const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+    const [reviewNotes, setReviewNotes] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [search, reportType, dateFrom, dateTo]);
+    }, [search, statusFilter]);
 
     useEffect(() => {
         fetchReports();
-    }, [search, reportType, dateFrom, dateTo, currentPage]);
+    }, [search, statusFilter, currentPage]);
 
     const fetchReports = async () => {
         setLoading(true);
         try {
-            const response = await axios.get('/report-management/accepted', {
+            const response = await axios.get('/report-management/all', {
                 params: {
                     search,
-                    report_type: reportType,
-                    date_from: dateFrom,
-                    date_to: dateTo,
+                    status: statusFilter,
                     page: currentPage,
                 },
             });
@@ -136,45 +140,122 @@ export default function ReportManagementPage() {
         }
     };
 
-    const handleViewDetail = (report: AcceptedReport) => {
+    const getStatusBadgeClass = (status: string) => {
+        switch (status) {
+            case 'pending':
+                return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+            case 'accepted':
+                return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+            case 'revoked':
+                return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+            default:
+                return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+        }
+    };
+
+    const handleViewDetail = (report: Report) => {
         setSelectedReport(report);
         setDetailDialogOpen(true);
     };
 
+    const handleOpenReviewDialog = (report: Report) => {
+        setSelectedReport(report);
+        setReviewDialogOpen(true);
+    };
+
+    const handleAccept = async () => {
+        if (!selectedReport) return;
+
+        setIsSubmitting(true);
+        try {
+            await axios.post(
+                `/report-management/report/${selectedReport.id}/accept`,
+                {
+                    review_notes: reviewNotes,
+                },
+            );
+
+            toast.success('Report accepted', {
+                description: `The report for "${selectedReport.file_name}" has been accepted.`,
+            });
+
+            setReviewDialogOpen(false);
+            setReviewNotes('');
+            fetchReports();
+        } catch (error: any) {
+            console.error('Error accepting report:', error);
+            toast.error('Failed to accept report', {
+                description:
+                    error.response?.data?.error ||
+                    'An error occurred while accepting the report.',
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleRevoke = async () => {
+        if (!selectedReport) return;
+
+        setIsSubmitting(true);
+        try {
+            await axios.post(
+                `/report-management/report/${selectedReport.id}/revoke`,
+                {
+                    review_notes: reviewNotes,
+                },
+            );
+
+            toast.success('Report revoked', {
+                description: `The report for "${selectedReport.file_name}" has been declined.`,
+            });
+
+            setReviewDialogOpen(false);
+            setReviewNotes('');
+            fetchReports();
+        } catch (error: any) {
+            console.error('Error revoking report:', error);
+            toast.error('Failed to revoke report', {
+                description:
+                    error.response?.data?.error ||
+                    'An error occurred while revoking the report.',
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const clearFilters = () => {
         setSearch('');
-        setReportType('all');
-        setDateFrom('');
-        setDateTo('');
+        setStatusFilter('all');
     };
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Report Management', href: '/report-management' },
-        { title: 'Accepted Reports', href: '/report-management' },
+        { title: 'All Reports', href: '/report-management' },
     ];
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Accepted Reports History" />
+            <Head title="Report Management" />
 
             <div className="flex flex-col gap-4 p-4">
                 {/* Header */}
                 <div className="mb-6 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
                     <div>
                         <h1 className="flex items-center gap-2 text-2xl font-bold">
-                            <FileCheck className="text-green-500 dark:text-green-400" />
-                            Accepted Reports History
+                            <FileCheck className="text-blue-500 dark:text-blue-400" />
+                            Report Management
                         </h1>
                         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                            View all accepted validation reports and deleted
-                            validations.
+                            View and manage all validation reports.
                         </p>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <div className="rounded-lg bg-green-100 px-4 py-2 dark:bg-green-900/30">
-                            <span className="text-sm font-medium text-green-700 dark:text-green-400">
-                                Total Accepted: {pagination.total}
+                        <div className="rounded-lg bg-blue-100 px-4 py-2 dark:bg-blue-900/30">
+                            <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                                Total Reports: {pagination.total}
                             </span>
                         </div>
                     </div>
@@ -187,7 +268,7 @@ export default function ReportManagementPage() {
                             <Search className="absolute top-2.5 left-3 h-4 w-4 text-gray-400" />
                             <Input
                                 type="text"
-                                placeholder="Search by file name, reporter, or reviewer..."
+                                placeholder="Search by file name or reporter..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 className="w-full border-gray-200 bg-white pl-9 dark:border-gray-800 dark:bg-gray-900"
@@ -196,33 +277,30 @@ export default function ReportManagementPage() {
 
                         <div className="flex gap-2">
                             <Select
-                                value={reportType}
-                                onValueChange={setReportType}
+                                value={statusFilter}
+                                onValueChange={setStatusFilter}
                             >
                                 <SelectTrigger className="w-[180px]">
                                     <Filter className="mr-2 h-4 w-4" />
-                                    <SelectValue placeholder="Report Type" />
+                                    <SelectValue placeholder="Status" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">
-                                        All Types
+                                        All Status
                                     </SelectItem>
-                                    <SelectItem value="wrong_document_type">
-                                        Salah Tipe Dokumen
+                                    <SelectItem value="pending">
+                                        Pending
                                     </SelectItem>
-                                    <SelectItem value="dirty_data">
-                                        Data Tidak Bersih
+                                    <SelectItem value="accepted">
+                                        Accepted
                                     </SelectItem>
-                                    <SelectItem value="custom">
-                                        Custom Message
+                                    <SelectItem value="revoked">
+                                        Revoked
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
 
-                            {(search ||
-                                reportType !== 'all' ||
-                                dateFrom ||
-                                dateTo) && (
+                            {(search || statusFilter !== 'all') && (
                                 <Button
                                     variant="outline"
                                     onClick={clearFilters}
@@ -233,51 +311,24 @@ export default function ReportManagementPage() {
                             )}
                         </div>
                     </div>
-
-                    {/* Date Range Filters */}
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                        <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-gray-400" />
-                            <Label className="text-sm">Reviewed Date:</Label>
-                        </div>
-                        <div className="flex gap-2">
-                            <Input
-                                type="date"
-                                value={dateFrom}
-                                onChange={(e) => setDateFrom(e.target.value)}
-                                className="w-[150px]"
-                                placeholder="From"
-                            />
-                            <span className="flex items-center text-gray-400">
-                                to
-                            </span>
-                            <Input
-                                type="date"
-                                value={dateTo}
-                                onChange={(e) => setDateTo(e.target.value)}
-                                className="w-[150px]"
-                                placeholder="To"
-                            />
-                        </div>
-                    </div>
                 </div>
 
                 {/* Table */}
                 <CardContent className="overflow-hidden rounded-xl border border-sidebar-border/70 p-0">
                     <div className="overflow-x-auto">
-                        <Table className="min-w-[1000px]">
+                        <Table className="min-w-[1200px]">
                             <TableHeader>
                                 <TableRow className="bg-gray-200/60 dark:bg-gray-900/60">
-                                    <TableHead className="border-gray-250 w-[350px] border-b px-5 py-3 text-sm font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200">
+                                    <TableHead className="border-gray-250 w-[300px] border-b px-5 py-3 text-sm font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200">
                                         File Name
                                     </TableHead>
                                     {[
                                         'Document Type',
                                         'Report Type',
+                                        'Status',
                                         'Reported By',
                                         'Reported At',
                                         'Reviewed By',
-                                        'Reviewed At',
                                         'Action',
                                     ].map((head) => (
                                         <TableHead
@@ -307,7 +358,7 @@ export default function ReportManagementPage() {
                                             className="transition-colors odd:bg-white even:bg-gray-50 dark:odd:bg-transparent dark:even:bg-gray-900/30"
                                         >
                                             <TableCell
-                                                className="max-w-[350px] font-medium"
+                                                className="max-w-[300px] font-medium"
                                                 title={report.file_name}
                                             >
                                                 {report.file_name}
@@ -330,29 +381,56 @@ export default function ReportManagementPage() {
                                                 </span>
                                             </TableCell>
                                             <TableCell>
+                                                <span
+                                                    className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${getStatusBadgeClass(
+                                                        report.status,
+                                                    )}`}
+                                                >
+                                                    {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell>
                                                 {report.reported_by}
                                             </TableCell>
                                             <TableCell className="text-sm text-gray-600 dark:text-gray-400">
                                                 {report.reported_at}
                                             </TableCell>
-                                            <TableCell>
-                                                {report.reviewed_by}
-                                            </TableCell>
                                             <TableCell className="text-sm text-gray-600 dark:text-gray-400">
-                                                {report.reviewed_at}
+                                                {report.reviewed_by || '-'}
                                             </TableCell>
                                             <TableCell>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="flex items-center text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
-                                                    onClick={() =>
-                                                        handleViewDetail(report)
-                                                    }
-                                                >
-                                                    <Eye className="mr-1 h-4 w-4" />
-                                                    Detail
-                                                </Button>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="flex items-center text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                                                        onClick={() =>
+                                                            handleViewDetail(
+                                                                report,
+                                                            )
+                                                        }
+                                                    >
+                                                        <Eye className="mr-1 h-4 w-4" />
+                                                        Detail
+                                                    </Button>
+
+                                                    {report.status ===
+                                                        'pending' && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="flex items-center text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20"
+                                                            onClick={() =>
+                                                                handleOpenReviewDialog(
+                                                                    report,
+                                                                )
+                                                            }
+                                                        >
+                                                            <CheckCircle className="mr-1 h-4 w-4" />
+                                                            Review
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))
@@ -362,7 +440,7 @@ export default function ReportManagementPage() {
                                             colSpan={8}
                                             className="py-8 text-center text-sm text-gray-500 dark:text-gray-400"
                                         >
-                                            No accepted reports found.
+                                            No reports found.
                                         </TableCell>
                                     </TableRow>
                                 )}
@@ -503,7 +581,7 @@ export default function ReportManagementPage() {
                         <DialogHeader>
                             <DialogTitle>Report Details</DialogTitle>
                             <DialogDescription>
-                                Detailed information about the accepted report.
+                                Detailed information about the report.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="grid gap-4 py-4">
@@ -536,6 +614,12 @@ export default function ReportManagementPage() {
                                         )}
                                 </div>
                             </div>
+                            <div className="grid gap-2">
+                                <Label>Status</Label>
+                                <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
+                                    {selectedReport?.status.charAt(0).toUpperCase() + selectedReport?.status.slice(1)}
+                                </div>
+                            </div>
                             {selectedReport?.report_message && (
                                 <div className="grid gap-2">
                                     <Label>Report Message</Label>
@@ -558,29 +642,122 @@ export default function ReportManagementPage() {
                                     </div>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="grid gap-2">
-                                    <Label>Reviewed By</Label>
-                                    <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
-                                        {selectedReport?.reviewed_by}
+                            {selectedReport?.reviewed_by && (
+                                <>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid gap-2">
+                                            <Label>Reviewed By</Label>
+                                            <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
+                                                {selectedReport.reviewed_by}
+                                            </div>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Reviewed At</Label>
+                                            <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
+                                                {selectedReport.reviewed_at}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="grid gap-2">
-                                    <Label>Reviewed At</Label>
-                                    <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
-                                        {selectedReport?.reviewed_at}
-                                    </div>
+                                    {selectedReport.review_notes && (
+                                        <div className="grid gap-2">
+                                            <Label>Review Notes</Label>
+                                            <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
+                                                {selectedReport.review_notes}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Review Dialog */}
+                <Dialog
+                    open={reviewDialogOpen}
+                    onOpenChange={(open) => {
+                        if (!isSubmitting) {
+                            setReviewDialogOpen(open);
+                            if (!open) {
+                                setReviewNotes('');
+                            }
+                        }
+                    }}
+                >
+                    <DialogContent className="sm:max-w-[600px]">
+                        <DialogHeader>
+                            <DialogTitle>Review Report</DialogTitle>
+                            <DialogDescription>
+                                Review and take action on this validation
+                                report.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label>Reported File</Label>
+                                <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
+                                    {selectedReport?.file_name}
                                 </div>
                             </div>
-                            {selectedReport?.review_notes && (
+                            <div className="grid gap-2">
+                                <Label>Issue Type</Label>
+                                <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
+                                    {selectedReport &&
+                                        getReportTypeLabel(
+                                            selectedReport.report_type,
+                                        )}
+                                </div>
+                            </div>
+                            {selectedReport?.report_message && (
                                 <div className="grid gap-2">
-                                    <Label>Review Notes</Label>
+                                    <Label>Report Message</Label>
                                     <div className="rounded-md bg-gray-100 p-3 dark:bg-gray-800">
-                                        {selectedReport.review_notes}
+                                        {selectedReport.report_message}
                                     </div>
                                 </div>
                             )}
+                            <div className="grid gap-2">
+                                <Label htmlFor="review-notes">
+                                    Review Notes (Optional)
+                                </Label>
+                                <Textarea
+                                    id="review-notes"
+                                    placeholder="Add notes about your decision..."
+                                    value={reviewNotes}
+                                    onChange={(e) =>
+                                        setReviewNotes(e.target.value)
+                                    }
+                                    rows={4}
+                                    disabled={isSubmitting}
+                                />
+                            </div>
                         </div>
+                        <DialogFooter className="gap-2">
+                            <Button
+                                variant="outline"
+                                onClick={() => setReviewDialogOpen(false)}
+                                disabled={isSubmitting}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={handleRevoke}
+                                disabled={isSubmitting}
+                                className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                            >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                {isSubmitting ? 'Revoking...' : 'Revoke'}
+                            </Button>
+                            <Button
+                                onClick={handleAccept}
+                                disabled={isSubmitting}
+                                className="bg-green-600 text-white hover:bg-green-700"
+                            >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                {isSubmitting ? 'Accepting...' : 'Accept'}
+                            </Button>
+                        </DialogFooter>
                     </DialogContent>
                 </Dialog>
             </div>
