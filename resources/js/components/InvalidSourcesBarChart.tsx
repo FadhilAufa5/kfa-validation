@@ -1,21 +1,17 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-interface ValidationGroupData {
-    sourceLabel: string;
-}
-
 interface InvalidSourcesBarChartProps {
-    allInvalidGroups: ValidationGroupData[];
+    sourceCounts: Record<string, number>;
     maxSources?: number;
 }
 
 export default function InvalidSourcesBarChart({
-    allInvalidGroups,
+    sourceCounts,
     maxSources = 5,
 }: InvalidSourcesBarChartProps) {
-    const sources = Array.from(
-        new Set(allInvalidGroups.map((g) => g.sourceLabel)),
-    ).slice(0, maxSources);
+    const sources = Object.entries(sourceCounts).slice(0, maxSources);
+
+    const maxCount = Math.max(...Object.values(sourceCounts), 1);
 
     return (
         <Card>
@@ -24,19 +20,7 @@ export default function InvalidSourcesBarChart({
             </CardHeader>
             <CardContent>
                 <div className="space-y-2">
-                    {sources.map((sourceLabel) => {
-                        const count = allInvalidGroups.filter(
-                            (g) => g.sourceLabel === sourceLabel,
-                        ).length;
-                        const maxCount = Math.max(
-                            ...sources.map(
-                                (label) =>
-                                    allInvalidGroups.filter(
-                                        (g) => g.sourceLabel === label,
-                                    ).length,
-                            ),
-                            1,
-                        );
+                    {sources.map(([sourceLabel, count]) => {
                         return (
                             <div key={sourceLabel} className="flex items-center gap-2">
                                 <span className="w-24 truncate text-xs">

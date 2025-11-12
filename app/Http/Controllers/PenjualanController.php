@@ -373,6 +373,38 @@ class PenjualanController extends Controller
         ]);
     }
 
+    public function getChartData($id, Request $request)
+    {
+        try {
+            $invalidChartData = [];
+            $matchedChartData = [];
+
+            // Get validation to check if there's data
+            $validation = \App\Models\Validation::find($id);
+
+            if (!$validation) {
+                return response()->json(['error' => 'Validation not found'], 404);
+            }
+
+            // Only fetch invalid groups chart data if there are mismatched records
+            if ($validation->mismatched_records > 0) {
+                $invalidChartData = $this->validationDataService->getInvalidGroupsChartData($id);
+            }
+
+            // Only fetch matched groups chart data if there are matched records
+            if ($validation->matched_records > 0) {
+                $matchedChartData = $this->validationDataService->getMatchedGroupsChartData($id);
+            }
+
+            return response()->json([
+                'invalid' => $invalidChartData,
+                'matched' => $matchedChartData,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
     public function getAllInvalidGroups($id, Request $request)
     {
         try {
@@ -449,7 +481,7 @@ class PenjualanController extends Controller
     public function checkProcessingStatus(Request $request)
     {
         $processingIds = $request->input('ids', []);
-        
+
         if (empty($processingIds)) {
             return response()->json([]);
         }

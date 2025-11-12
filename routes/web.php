@@ -52,6 +52,7 @@ Route::post('/penjualan/process/{filename}', [PenjualanController::class, 'proce
 
 // Validation Results
 Route::get('penjualan/{id}', [PenjualanController::class, 'show'])->name('penjualan.show');
+Route::get('penjualan/{id}/chart-data', [PenjualanController::class, 'getChartData'])->name('penjualan.chart-data');
 Route::get('penjualan/{id}/invalid-groups', [PenjualanController::class, 'getInvalidGroups'])->name('penjualan.invalid-groups');
 Route::get('penjualan/{id}/invalid-groups/all', [PenjualanController::class, 'getAllInvalidGroups'])->name('penjualan.invalid-groups-all');
 Route::get('penjualan/{id}/matched-records', [PenjualanController::class, 'getMatchedRecords'])->name('penjualan.matched-records');
@@ -86,6 +87,7 @@ Route::post('/pembelian/process/{filename}', [PembelianController::class, 'proce
 
 // Validation Results
 Route::get('pembelian/{id}', [PembelianController::class, 'show'])->name('pembelian.show');
+Route::get('pembelian/{id}/chart-data', [PembelianController::class, 'getChartData'])->name('pembelian.chart-data');
 Route::get('pembelian/{id}/invalid-groups', [PembelianController::class, 'getInvalidGroups'])->name('pembelian.invalid-groups');
 Route::get('pembelian/{id}/invalid-groups/all', [PembelianController::class, 'getAllInvalidGroups'])->name('pembelian.invalid-groups-all');
 Route::get('pembelian/{id}/matched-records', [PembelianController::class, 'getMatchedRecords'])->name('pembelian.matched-records');
