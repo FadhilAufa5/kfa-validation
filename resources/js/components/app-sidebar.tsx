@@ -1,17 +1,26 @@
 import { Link, usePage } from '@inertiajs/react';
-import { HandCoins, History, LayoutGrid, Store, Users, Activity, LayoutDashboard, Settings, Shield, FileCheck } from 'lucide-react';
+import {
+    Activity,
+    FileCheck,
+    HandCoins,
+    History,
+    LayoutDashboard,
+    Settings,
+    Shield,
+    Store,
+    Users,
+} from 'lucide-react';
 
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 import AppLogo from './app-logo';
 
-
 import { NavMain } from '@/components/nav-main';
 import { NavPembelian } from '@/components/nav-pembelian';
 import { NavPenjualan } from '@/components/nav-penjualan';
+import { NavReportManagement } from '@/components/nav-report-management';
 import { NavUser } from '@/components/nav-user';
 import { NavUy } from '@/components/nav-uy';
-import { NavReportManagement } from '@/components/nav-report-management';
 
 import {
     Sidebar,
@@ -27,7 +36,7 @@ const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: dashboard(),
-        icon: LayoutDashboard ,
+        icon: LayoutDashboard,
     },
 ];
 
@@ -43,7 +52,6 @@ const pembelianNavItems: NavItem[] = [
         icon: History,
     },
 ];
-
 
 const penjualanNavItems: NavItem[] = [
     {
@@ -83,7 +91,7 @@ const uyNavItems: NavItem[] = [
 
 const reportManagementNavItems: NavItem[] = [
     {
-        title: 'Accepted Reports',
+        title: 'Reports',
         href: '/report-management',
         icon: FileCheck,
     },
@@ -122,7 +130,9 @@ export function AppSidebar() {
                 <NavPembelian items={pembelianNavItems} />
                 <NavPenjualan items={penjualanNavItems} />
                 {/* Only show Report Management & User Management for super_admin */}
-                {isSuperAdmin && <NavReportManagement items={reportManagementNavItems} />}
+                {isSuperAdmin && (
+                    <NavReportManagement items={reportManagementNavItems} />
+                )}
                 {isSuperAdmin && <NavUy items={uyNavItems} />}
             </SidebarContent>
 

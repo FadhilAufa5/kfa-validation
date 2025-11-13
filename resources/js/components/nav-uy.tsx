@@ -13,7 +13,7 @@ export function NavUy({ items = [] }: { items: NavItem[] }) {
 
     return (
         <SidebarGroup className="px-2 py-0">
-            <SidebarGroupLabel>Menu User</SidebarGroupLabel>
+            <SidebarGroupLabel>Menu Admin</SidebarGroupLabel>
             <SidebarMenu>
                 {items.map((item) => (
                     <SidebarMenuItem key={item.title}>
