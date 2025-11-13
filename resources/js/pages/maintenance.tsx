@@ -1,12 +1,46 @@
-import { Head } from '@inertiajs/react';
-import { AlertTriangle, Mail, Phone } from 'lucide-react';
+import { Head, Link, router } from '@inertiajs/react';
+import { AlertTriangle, Mail, Phone, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { logout } from '@/routes';
+import { useEffect, useRef } from 'react';
+import { route } from 'ziggy-js';
 
-export default function Maintenance() {
+interface MaintenanceProps {
+    hasValidationData?: boolean;
+}
+
+export default function Maintenance({ hasValidationData = false }: MaintenanceProps) {
+    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
     const handleLogout = () => {
-        window.location.href = route('logout');
+        router.flushAll();
     };
+
+    // Auto-redirect to dashboard if validation data becomes available
+    useEffect(() => {
+        if (hasValidationData) {
+            // Clear polling before redirecting
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+            router.visit(route('dashboard'));
+        }
+    }, [hasValidationData]);
+
+    // Poll for validation data availability every 10 seconds
+    useEffect(() => {
+        pollingIntervalRef.current = setInterval(() => {
+            router.reload({ only: ['hasValidationData'], preserveScroll: true });
+        }, 10000); // Poll every 10 seconds
+
+        // Cleanup interval on unmount
+        return () => {
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+        };
+    }, []);
 
     return (
         <>
@@ -23,6 +57,10 @@ export default function Maintenance() {
                         <CardDescription className="text-base">
                             Pemeliharaan Sistem Diperlukan
                         </CardDescription>
+                        <div className="flex items-center justify-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                            <span>Checking for data availability...</span>
+                        </div>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg p-6">
@@ -106,11 +144,17 @@ export default function Maintenance() {
 
                         <div className="flex justify-center pt-4">
                             <Button
-                                onClick={handleLogout}
+                                asChild
                                 variant="outline"
                                 className="w-full sm:w-auto"
                             >
-                                Logout
+                                <Link
+                                    href={logout()}
+                                    as="button"
+                                    onClick={handleLogout}
+                                >
+                                    Logout
+                                </Link>
                             </Button>
                         </div>
                     </CardContent>
