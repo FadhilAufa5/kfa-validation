@@ -1,13 +1,24 @@
 <?php
 
 /**
- * Validation Rules Configuration
+ * Validation Configuration
  * 
- * This file contains all validation rules and tolerances for the application.
+ * This file contains all validation rules, settings, and tolerances for the application.
  * Changes here will affect validation behavior without requiring code changes.
  */
 
 return [
+    /*
+    |--------------------------------------------------------------------------
+    | Use Pipeline Pattern
+    |--------------------------------------------------------------------------
+    |
+    | This option controls whether the new pipeline pattern should be used
+    | for validation processing. Set to false to use the legacy implementation.
+    |
+    */
+    'use_pipeline' => env('VALIDATION_USE_PIPELINE', true),
+
     /*
     |--------------------------------------------------------------------------
     | Default Validation Tolerance
@@ -35,6 +46,18 @@ return [
         'chunk_size_for_bulk_insert' => 500,
         'sqlite_variable_limit' => 999, // SQLite has a limit of 999 variables per query
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pipeline Settings
+    |--------------------------------------------------------------------------
+    |
+    | Settings for the validation pipeline pattern
+    |
+    */
+    'batch_size' => 100,
+    'enable_caching' => false,
+    'cache_ttl' => 3600, // 1 hour
 
     /*
     |--------------------------------------------------------------------------

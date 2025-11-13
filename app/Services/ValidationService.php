@@ -8,20 +8,63 @@ use Illuminate\Support\Facades\Log;
 use App\Models\Validation;
 use App\Models\MappedUploadedFile;
 use App\Models\ValidationSetting;
+use App\Services\Validation\ValidationPipeline;
+use App\Services\Validation\ValidationContext;
+use App\Services\Validation\Steps\LoadConfigStep;
+use App\Services\Validation\Steps\LoadValidationDataStep;
+use App\Services\Validation\Steps\BuildValidationMapStep;
+use App\Services\Validation\Steps\LoadUploadedDataStep;
+use App\Services\Validation\Steps\BuildUploadedMapStep;
+use App\Services\Validation\Steps\CompareDataStep;
+use App\Services\Validation\Steps\CategorizeRowsStep;
+use App\Services\Validation\Steps\SaveResultsStep;
 
 class ValidationService
 {
     private const DEFAULT_TOLERANCE = 1000.01;
-    
+
+    private ValidationPipeline $pipeline;
+
     private function getTolerance(): float
     {
         return ValidationSetting::get('rounding_tolerance', self::DEFAULT_TOLERANCE);
     }
 
     public function __construct(
-        private FileProcessingService $fileProcessingService
-    ) {}
+        private FileProcessingService $fileProcessingService,
+        ValidationPipeline $pipeline,
+        private LoadConfigStep $loadConfigStep,
+        private LoadValidationDataStep $loadValidationDataStep,
+        private BuildValidationMapStep $buildValidationMapStep,
+        private LoadUploadedDataStep $loadUploadedDataStep,
+        private BuildUploadedMapStep $buildUploadedMapStep,
+        private CompareDataStep $compareDataStep,
+        private CategorizeRowsStep $categorizeRowsStep,
+        private SaveResultsStep $saveResultsStep,
+    ) {
+        $this->pipeline = $pipeline;
+        $this->setupPipeline();
+    }
 
+    /**
+     * Setup validation pipeline with all steps
+     */
+    private function setupPipeline(): void
+    {
+        $this->pipeline
+            ->addStep($this->loadConfigStep)
+            ->addStep($this->loadValidationDataStep)
+            ->addStep($this->buildValidationMapStep)
+            ->addStep($this->loadUploadedDataStep)
+            ->addStep($this->buildUploadedMapStep)
+            ->addStep($this->compareDataStep)
+            ->addStep($this->categorizeRowsStep)
+            ->addStep($this->saveResultsStep);
+    }
+
+    /**
+     * Validate document using pipeline pattern
+     */
     public function validateDocument(
         string $filename,
         string $documentType,
@@ -30,9 +73,71 @@ class ValidationService
         ?int $userId = null,
         ?int $existingValidationId = null
     ): array {
+        // Check if pipeline should be used (feature flag)
+        if (config('validation.use_pipeline', true)) {
+            return $this->validateDocumentWithPipeline(
+                $filename,
+                $documentType,
+                $documentCategory,
+                $headerRow,
+                $userId,
+                $existingValidationId
+            );
+        }
+
+        // Fallback to legacy implementation if needed
+        return $this->validateDocumentLegacy(
+            $filename,
+            $documentType,
+            $documentCategory,
+            $headerRow,
+            $userId,
+            $existingValidationId
+        );
+    }
+
+    /**
+     * Validate document using pipeline pattern (NEW)
+     */
+    private function validateDocumentWithPipeline(
+        string $filename,
+        string $documentType,
+        string $documentCategory,
+        int $headerRow,
+        ?int $userId,
+        ?int $existingValidationId
+    ): array {
+        // Create validation context
+        $context = new ValidationContext(
+            filename: $filename,
+            documentType: $documentType,
+            documentCategory: $documentCategory,
+            headerRow: $headerRow,
+            userId: $userId,
+            existingValidationId: $existingValidationId
+        );
+
+        // Execute pipeline
+        $context = $this->pipeline->execute($context);
+
+        // Return results in expected format
+        return $context->toArray();
+    }
+
+    /**
+     * Legacy validation implementation (FALLBACK)
+     */
+    private function validateDocumentLegacy(
+        string $filename,
+        string $documentType,
+        string $documentCategory,
+        int $headerRow,
+        ?int $userId,
+        ?int $existingValidationId
+    ): array {
         $startTime = microtime(true);
 
-        Log::info('Starting validation process', [
+        Log::info('Starting validation process (LEGACY)', [
             'type' => $documentCategory,
             'documentType' => $documentType,
             'filename' => $filename,
@@ -40,10 +145,10 @@ class ValidationService
         ]);
 
         $config = $this->getValidationConfig($documentType, $documentCategory);
-        
+
         // Get total record count efficiently
         $totalRecords = $this->getTotalRecordCount($filename, $documentType, $documentCategory);
-        
+
         if ($totalRecords === 0) {
             throw new \Exception('No mapped data found for this file. Please ensure the file was properly mapped before validation.');
         }
@@ -62,7 +167,7 @@ class ValidationService
 
         // Compare aggregated data
         [$invalidGroups, $matchedGroups] = $this->compareData($uploadedMapByGroup, $validationMap);
-        
+
         // Categorize rows using database queries instead of loading all into memory
         [$invalidRows, $matchedRows, $mismatchedRecordCount] = $this->categorizeRowsFromDatabase(
             $filename,
@@ -177,19 +282,6 @@ class ValidationService
         }
     }
 
-    private function validateRequiredColumns(array $headers, array $config): void
-    {
-        $uploadedConnector = $config['connector'][0];
-        $uploadedSum = $config['sum'][0] ?? null;
-
-        if (!in_array($uploadedConnector, $headers)) {
-            throw new \Exception("Kolom '{$uploadedConnector}' tidak ditemukan dalam file upload.");
-        }
-
-        if ($uploadedSum && !in_array($uploadedSum, $headers)) {
-            throw new \Exception("Kolom '{$uploadedSum}' tidak ditemukan dalam file upload.");
-        }
-    }
 
     private function buildValidationMap(array $validationRecords, array $config): array
     {
@@ -199,7 +291,8 @@ class ValidationService
 
         foreach ($validationRecords as $record) {
             $key = trim($record[$validationConnector] ?? '');
-            if ($key === '') continue;
+            if ($key === '')
+                continue;
 
             $value = $this->cleanAndParseFloat($record[$validationSum] ?? 0);
             $map[$key] = ($map[$key] ?? 0) + $value;
@@ -336,7 +429,7 @@ class ValidationService
 
         // Get invalid row keys
         $invalidKeys = array_keys($invalidGroups);
-        
+
         // Process invalid rows in batches if there are any
         if (!empty($invalidKeys)) {
             foreach (array_chunk($invalidKeys, 500) as $keyChunk) {
@@ -370,7 +463,7 @@ class ValidationService
             }
 
             $validationValue = $validationMap[$key] ?? null;
-            
+
             // Check if it's a matched key
             if ($validationValue === null && $uploadedValue == 0) {
                 $matchedKeys[] = $key; // Retur doesn't record
@@ -435,21 +528,7 @@ class ValidationService
         $score = $totalRecords > 0 ? round(($matchedRecords / $totalRecords) * 100, 2) : 100.00;
 
         // Use database transaction to ensure data integrity
-        return DB::transaction(function () use (
-            $filename,
-            $documentType,
-            $documentCategory,
-            $score,
-            $totalRecords,
-            $matchedRecords,
-            $mismatchedRecords,
-            $invalidGroups,
-            $invalidRows,
-            $matchedGroups,
-            $matchedRows,
-            $userId,
-            $existingValidationId
-        ) {
+        return DB::transaction(function () use ($filename, $documentType, $documentCategory, $score, $totalRecords, $matchedRecords, $mismatchedRecords, $invalidGroups, $invalidRows, $matchedGroups, $matchedRows, $userId, $existingValidationId) {
             // If existing validation ID provided, update it instead of creating new
             if ($existingValidationId) {
                 $validation = Validation::find($existingValidationId);
@@ -459,7 +538,7 @@ class ValidationService
                     $validation->invalidRows()->delete();
                     $validation->matchedGroups()->delete();
                     $validation->matchedRows()->delete();
-                    
+
                     // Update validation record
                     $validation->update([
                         'score' => $score,

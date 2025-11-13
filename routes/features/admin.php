@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UsersController;
 use App\Http\Controllers\ActivityLogController;
-use App\Http\Controllers\ValidationSettingController;
+use App\Http\Controllers\Settings\ValidationSettingController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ReportManagementController;
 

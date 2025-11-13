@@ -61,12 +61,13 @@ if (class_exists($serviceClass)) {
 
 echo "\n=== Controller Methods ===\n";
 
-$controller = new \App\Http\Controllers\PembelianController(
+$controller = new \App\Http\Controllers\Validation\PembelianController(
     app(\App\Services\FileProcessingService::class),
     app(\App\Services\ValidationService::class),
     app(\App\Services\DocumentComparisonService::class),
     app(\App\Services\ValidationDataService::class),
-    app(\App\Services\MappedFileService::class)
+    app(\App\Services\MappedFileService::class),
+    app(\App\Services\ValidationReportService::class)
 );
 
 if (method_exists($controller, 'validateFileAsync')) {

@@ -2,8 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
-use App\Http\Controllers\PenjualanController;
-use App\Http\Controllers\ValidationDataController;
+use App\Http\Controllers\Validation\PenjualanController;
+use App\Http\Controllers\Validation\ValidationDataController;
 use App\Http\Controllers\ReportManagementController;
 
 /*

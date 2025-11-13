@@ -13,7 +13,7 @@ class ValidationConfigService
     {
         // Try document-specific tolerance first
         if ($documentType && $documentCategory) {
-            $specificTolerance = Config::get("validation_rules.tolerances.{$documentType}.{$documentCategory}");
+            $specificTolerance = Config::get("validation.tolerances.{$documentType}.{$documentCategory}");
             if ($specificTolerance !== null) {
                 return (float) $specificTolerance;
             }
@@ -26,7 +26,7 @@ class ValidationConfigService
         }
 
         // Fall back to config default
-        return (float) Config::get('validation_rules.default_tolerance', 1000.01);
+        return (float) Config::get('validation.default_tolerance', 1000.01);
     }
 
     /**
@@ -34,7 +34,7 @@ class ValidationConfigService
      */
     public function getNote(string $key): string
     {
-        return Config::get("validation_rules.notes.{$key}", '');
+        return Config::get("validation.notes.{$key}", '');
     }
 
     /**
@@ -42,7 +42,7 @@ class ValidationConfigService
      */
     public function getErrorMessage(string $key): string
     {
-        return Config::get("validation_rules.error_messages.{$key}", 'Validation error occurred');
+        return Config::get("validation.error_messages.{$key}", 'Validation error occurred');
     }
 
     /**
@@ -50,7 +50,7 @@ class ValidationConfigService
      */
     public function getDiscrepancyCategory(string $key): string
     {
-        return Config::get("validation_rules.discrepancy_categories.{$key}", $key);
+        return Config::get("validation.discrepancy_categories.{$key}", $key);
     }
 
     /**
@@ -58,7 +58,7 @@ class ValidationConfigService
      */
     public function isAsyncValidationEnabled(): bool
     {
-        return Config::get('validation_rules.settings.enable_async_validation', true);
+        return Config::get('validation.settings.enable_async_validation', true);
     }
 
     /**
@@ -66,7 +66,7 @@ class ValidationConfigService
      */
     public function getSupportedFormats(): array
     {
-        return Config::get('validation_rules.settings.supported_formats', ['xlsx', 'xls', 'csv']);
+        return Config::get('validation.settings.supported_formats', ['xlsx', 'xls', 'csv']);
     }
 
     /**
@@ -74,7 +74,7 @@ class ValidationConfigService
      */
     public function getMaxFileSizeMb(): int
     {
-        return Config::get('validation_rules.settings.max_file_size_mb', 50);
+        return Config::get('validation.settings.max_file_size_mb', 50);
     }
 
     /**
@@ -82,7 +82,7 @@ class ValidationConfigService
      */
     public function getDefaultHeaderRow(): int
     {
-        return Config::get('validation_rules.settings.default_header_row', 1);
+        return Config::get('validation.settings.default_header_row', 1);
     }
 
     /**
@@ -90,7 +90,7 @@ class ValidationConfigService
      */
     public function getChunkSize(): int
     {
-        return Config::get('validation_rules.settings.chunk_size_for_bulk_insert', 500);
+        return Config::get('validation.settings.chunk_size_for_bulk_insert', 500);
     }
 
     /**
@@ -98,7 +98,7 @@ class ValidationConfigService
      */
     public function getSqliteVariableLimit(): int
     {
-        return Config::get('validation_rules.settings.sqlite_variable_limit', 999);
+        return Config::get('validation.settings.sqlite_variable_limit', 999);
     }
 
     /**
@@ -106,7 +106,7 @@ class ValidationConfigService
      */
     public function getDefaultPerPage(): int
     {
-        return Config::get('validation_rules.performance.pagination_default_per_page', 10);
+        return Config::get('validation.performance.pagination_default_per_page', 10);
     }
 
     /**
@@ -114,7 +114,7 @@ class ValidationConfigService
      */
     public function getMaxPerPage(): int
     {
-        return Config::get('validation_rules.performance.pagination_max_per_page', 100);
+        return Config::get('validation.performance.pagination_max_per_page', 100);
     }
 
     /**
@@ -122,7 +122,7 @@ class ValidationConfigService
      */
     public function getStatsCacheTtl(): int
     {
-        return Config::get('validation_rules.performance.cache_validation_stats_ttl', 300);
+        return Config::get('validation.performance.cache_validation_stats_ttl', 300);
     }
 
     /**
@@ -130,7 +130,7 @@ class ValidationConfigService
      */
     public function getChartDataCacheTtl(): int
     {
-        return Config::get('validation_rules.performance.cache_chart_data_ttl', 600);
+        return Config::get('validation.performance.cache_chart_data_ttl', 600);
     }
 
     /**
@@ -138,7 +138,7 @@ class ValidationConfigService
      */
     public function useDatabaseAggregation(): bool
     {
-        return Config::get('validation_rules.performance.use_database_aggregation', true);
+        return Config::get('validation.performance.use_database_aggregation', true);
     }
 
     /**
@@ -146,6 +146,6 @@ class ValidationConfigService
      */
     public function getAllRules(): array
     {
-        return Config::get('validation_rules', []);
+        return Config::get('validation', []);
     }
 }
