@@ -31,7 +31,19 @@ Route::get('/', function () {
 
 // Maintenance Route (for users when validation data is empty)
 Route::middleware(['auth'])->get('/maintenance', function () {
-    return Inertia::render('maintenance');
+    // Check if validation data is now available
+    $pembelianInfo = \App\Models\ImDataInfo::getInfo('im_purchases_and_return');
+    $penjualanInfo = \App\Models\ImDataInfo::getInfo('im_jual');
+    
+    $isPembelianEmpty = !$pembelianInfo || $pembelianInfo->row_count === 0;
+    $isPenjualanEmpty = !$penjualanInfo || $penjualanInfo->row_count === 0;
+    
+    // If data is now available, flag it so frontend can redirect
+    $hasValidationData = !($isPembelianEmpty && $isPenjualanEmpty);
+    
+    return Inertia::render('maintenance', [
+        'hasValidationData' => $hasValidationData,
+    ]);
 })->name('maintenance');
 
 // Authenticated Routes

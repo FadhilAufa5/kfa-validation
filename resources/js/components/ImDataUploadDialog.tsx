@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,21 +9,22 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Upload, AlertCircle, FileSpreadsheet } from "lucide-react";
 
 interface ImDataUploadDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (file: File, dataType: string) => void;
+  initialDataType?: string;
 }
 
 export default function ImDataUploadDialog({
   isOpen,
   onClose,
   onConfirm,
+  initialDataType = "pembelian",
 }: ImDataUploadDialogProps) {
-  const [dataType, setDataType] = useState<string>("pembelian");
+  const [dataType, setDataType] = useState<string>(initialDataType);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -32,6 +33,11 @@ export default function ImDataUploadDialog({
     pembelian: "im_purchases_and_return",
     penjualan: "im_jual",
   };
+
+  // Update dataType when initialDataType changes
+  useEffect(() => {
+    setDataType(initialDataType);
+  }, [initialDataType]);
 
   const handleFileChange = (selectedFile: File | null) => {
     if (!selectedFile) {
@@ -89,7 +95,7 @@ export default function ImDataUploadDialog({
 
   const handleClose = () => {
     setFile(null);
-    setDataType("pembelian");
+    setDataType(initialDataType);
     setError("");
     onClose();
   };
@@ -102,35 +108,38 @@ export default function ImDataUploadDialog({
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i];
   };
 
+  const getDialogTitle = () => {
+    return dataType === "pembelian" 
+      ? "Upload Pembelian Data" 
+      : "Upload Penjualan Data";
+  };
+
+  const getDialogDescription = () => {
+    const tableName = dataType === "pembelian" 
+      ? "im_purchases_and_return" 
+      : "im_jual";
+    return `Upload validation data file for ${tableName}. Large files will be processed in the background.`;
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[525px]">
         <DialogHeader>
-          <DialogTitle>Upload IM Data</DialogTitle>
+          <DialogTitle>{getDialogTitle()}</DialogTitle>
           <DialogDescription>
-            Upload validation data file for Pembelian or Penjualan.
-            Large files will be processed in the background.
+            {getDialogDescription()}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Data Type Selection */}
-          <div className="space-y-2">
-            <Label>Data Type</Label>
-            <RadioGroup value={dataType} onValueChange={setDataType}>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="pembelian" id="pembelian" />
-                <Label htmlFor="pembelian" className="font-normal cursor-pointer">
-                  Pembelian (im_purchases_and_return)
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="penjualan" id="penjualan" />
-                <Label htmlFor="penjualan" className="font-normal cursor-pointer">
-                  Penjualan (im_jual)
-                </Label>
-              </div>
-            </RadioGroup>
+          {/* Data Type Display (Read-only) */}
+          <div className="rounded-lg bg-muted p-4">
+            <Label className="text-sm text-muted-foreground">Data Type</Label>
+            <p className="text-base font-medium mt-1">
+              {dataType === "pembelian" 
+                ? "Pembelian (im_purchases_and_return)" 
+                : "Penjualan (im_jual)"}
+            </p>
           </div>
 
           {/* File Upload Area */}
@@ -196,7 +205,10 @@ export default function ImDataUploadDialog({
           </div>
 
           {/* Info Box */}
-          <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+          <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg space-y-2">
+            <p className="text-xs text-blue-900">
+              <strong>Expected filename:</strong> {expectedFilenames[dataType as keyof typeof expectedFilenames]}
+            </p>
             <p className="text-xs text-blue-900">
               <strong>Important:</strong> Large files (300MB - 7GB) will be processed
               in the background. The existing data will be replaced with the new data.

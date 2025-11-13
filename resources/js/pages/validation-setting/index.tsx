@@ -12,7 +12,7 @@ import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { Head, router } from '@inertiajs/react';
 import { Clock, Database, Settings, Upload, User, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Toaster, toast } from 'sonner';
 import { route } from 'ziggy-js';
 
@@ -47,11 +47,23 @@ export default function ValidationSettingIndex({
 }: ValidationSettingProps) {
     const [isToleranceDialogOpen, setIsToleranceDialogOpen] = useState(false);
     const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+    const [uploadDataType, setUploadDataType] = useState<string>('pembelian');
     const [refreshingTable, setRefreshingTable] = useState<string | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Validation Setting', href: '/validation-setting' },
     ];
+
+    // Cleanup polling interval on unmount
+    useEffect(() => {
+        return () => {
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+        };
+    }, []);
 
     const formatNumber = (num: number): string => {
         return new Intl.NumberFormat('id-ID').format(num);
@@ -83,15 +95,78 @@ export default function ValidationSettingIndex({
         router.post(route('validation-setting.upload-im-data'), formData, {
             onSuccess: () => {
                 toast.success(
-                    'File uploaded successfully and is being processed in the background.',
+                    'File uploaded successfully and is being processed in the background. Data will refresh automatically when processing is complete.',
+                    { duration: 5000 }
                 );
                 setIsUploadDialogOpen(false);
+                setIsProcessing(true);
+                startPollingForUpdates(dataType);
             },
-            onError: (errors: any) => {
+            onError: (errors: Record<string, string>) => {
                 toast.error(errors.file || 'Failed to upload file');
             },
             forceFormData: true,
         });
+    };
+
+    const startPollingForUpdates = (dataType: string) => {
+        let pollCount = 0;
+        const maxPolls = 120; // Poll for up to 10 minutes (120 * 5 seconds)
+
+        // Clear any existing interval
+        if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+        }
+
+        // Store the previous timestamp to detect changes
+        const previousTimestamp = dataType === 'pembelian'
+            ? imDataInfo.pembelian?.last_updated_at
+            : imDataInfo.penjualan?.last_updated_at;
+
+        pollingIntervalRef.current = setInterval(() => {
+            pollCount++;
+
+            // Reload the page data using visit to get fresh data
+            router.visit(route('validation-setting.index'), {
+                only: ['imDataInfo'],
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: (page) => {
+                    const newImDataInfo = page.props.imDataInfo as ImDataInfo;
+                    const currentData = dataType === 'pembelian' 
+                        ? newImDataInfo.pembelian 
+                        : newImDataInfo.penjualan;
+
+                    // Check if the timestamp has changed (indicating processing is complete)
+                    if (currentData && currentData.last_updated_at !== previousTimestamp) {
+                        if (pollingIntervalRef.current) {
+                            clearInterval(pollingIntervalRef.current);
+                            pollingIntervalRef.current = null;
+                        }
+                        setIsProcessing(false);
+                        toast.success(
+                            `${dataType === 'pembelian' ? 'Pembelian' : 'Penjualan'} data processing completed! Row count: ${formatNumber(currentData.row_count)}`,
+                            { duration: 5000 }
+                        );
+                    }
+
+                    // Stop polling after max attempts
+                    if (pollCount >= maxPolls) {
+                        if (pollingIntervalRef.current) {
+                            clearInterval(pollingIntervalRef.current);
+                            pollingIntervalRef.current = null;
+                        }
+                        setIsProcessing(false);
+                        toast.info('Processing is taking longer than expected. Please refresh manually to see the updated count.');
+                    }
+                }
+            });
+        }, 5000); // Poll every 5 seconds
+    };
+
+    const handleOpenUploadDialog = (dataType: string) => {
+        setUploadDataType(dataType);
+        setIsUploadDialogOpen(true);
     };
 
     const handleRefreshCount = (tableName: string) => {
@@ -110,7 +185,7 @@ export default function ValidationSettingIndex({
                     toast.success(`${displayName} data count refreshed successfully!`);
                     setRefreshingTable(null);
                 },
-                onError: (errors: any) => {
+                onError: (errors: Record<string, string>) => {
                     toast.error(errors.refresh || 'Failed to refresh data count');
                     setRefreshingTable(null);
                 },
@@ -134,6 +209,12 @@ export default function ValidationSettingIndex({
                         <p className="mt-1 text-sm text-muted-foreground">
                             Configure validation parameters and update IM data
                         </p>
+                        {isProcessing && (
+                            <div className="mt-2 flex items-center gap-2 text-sm text-amber-600">
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                                <span>Processing uploaded data in background...</span>
+                            </div>
+                        )}
                     </div>
                     <Button
                         variant="outline"
@@ -186,41 +267,45 @@ export default function ValidationSettingIndex({
                                             )}
                                         </span>
                                     </div>
-                                    <div className="flex flex-col gap-2 md:flex-row md:gap-4">
-                                        <div className="flex flex-1 items-start gap-2 text-sm">
-                                            <Clock className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                                            <div>
-                                                <p className="text-muted-foreground">
-                                                    Last Updated
-                                                </p>
-                                                <p className="font-medium">
-                                                    {
-                                                        imDataInfo.pembelian
-                                                            .last_updated_human
-                                                    }
-                                                </p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {
-                                                        imDataInfo.pembelian
-                                                            .last_updated_at
-                                                    }
-                                                </p>
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div className="flex flex-1 items-center gap-4">
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Last Updated
+                                                    </p>
+                                                    <p className="font-medium text-sm">
+                                                        {
+                                                            imDataInfo.pembelian
+                                                                .last_updated_human
+                                                        }
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Updated By
+                                                    </p>
+                                                    <p className="font-medium text-sm">
+                                                        {
+                                                            imDataInfo.pembelian
+                                                                .last_updated_by
+                                                        }
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="flex flex-1 items-center gap-2 text-sm">
-                                            <User className="h-4 w-4 text-muted-foreground" />
-                                            <div>
-                                                <p className="text-muted-foreground">
-                                                    Updated By
-                                                </p>
-                                                <p className="font-medium">
-                                                    {
-                                                        imDataInfo.pembelian
-                                                            .last_updated_by
-                                                    }
-                                                </p>
-                                            </div>
-                                        </div>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => handleOpenUploadDialog('pembelian')}
+                                            className="gap-2 md:ml-4 flex-shrink-0"
+                                        >
+                                            <Upload className="h-4 w-4" />
+                                            Update IM Data
+                                        </Button>
                                     </div>
                                 </>
                             ) : (
@@ -269,41 +354,45 @@ export default function ValidationSettingIndex({
                                             )}
                                         </span>
                                     </div>
-                                    <div className="flex flex-col gap-2 md:flex-row md:gap-4">
-                                        <div className="flex flex-1 items-start gap-2 text-sm">
-                                            <Clock className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                                            <div>
-                                                <p className="text-muted-foreground">
-                                                    Last Updated
-                                                </p>
-                                                <p className="font-medium">
-                                                    {
-                                                        imDataInfo.penjualan
-                                                            .last_updated_human
-                                                    }
-                                                </p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {
-                                                        imDataInfo.penjualan
-                                                            .last_updated_at
-                                                    }
-                                                </p>
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div className="flex flex-1 items-center gap-4">
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Last Updated
+                                                    </p>
+                                                    <p className="font-medium text-sm">
+                                                        {
+                                                            imDataInfo.penjualan
+                                                                .last_updated_human
+                                                        }
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                                <div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Updated By
+                                                    </p>
+                                                    <p className="font-medium text-sm">
+                                                        {
+                                                            imDataInfo.penjualan
+                                                                .last_updated_by
+                                                        }
+                                                    </p>
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="flex flex-1 items-center gap-2 text-sm">
-                                            <User className="h-4 w-4 text-muted-foreground" />
-                                            <div>
-                                                <p className="text-muted-foreground">
-                                                    Updated By
-                                                </p>
-                                                <p className="font-medium">
-                                                    {
-                                                        imDataInfo.penjualan
-                                                            .last_updated_by
-                                                    }
-                                                </p>
-                                            </div>
-                                        </div>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => handleOpenUploadDialog('penjualan')}
+                                            className="gap-2 md:ml-4 flex-shrink-0"
+                                        >
+                                            <Upload className="h-4 w-4" />
+                                            Update IM Data
+                                        </Button>
                                     </div>
                                 </>
                             ) : (
@@ -315,8 +404,8 @@ export default function ValidationSettingIndex({
                     </Card>
                 </div>
 
-                {/* Settings Cards */}
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                {/* Settings Card */}
+                <div className="max-w-2xl">
                     {/* Rounding Tolerance Card */}
                     <Card>
                         <CardHeader>
@@ -379,41 +468,6 @@ export default function ValidationSettingIndex({
                             </Button>
                         </CardContent>
                     </Card>
-
-                    {/* IM Data Upload Card */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Update IM Data</CardTitle>
-                            <CardDescription>
-                                Upload validation data files (Pembelian or
-                                Penjualan)
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2 rounded-lg bg-muted p-4">
-                                <p className="text-sm font-medium">
-                                    Supported Files:
-                                </p>
-                                <ul className="list-inside list-disc text-sm text-muted-foreground">
-                                    <li>Pembelian: im_purchases_and_return</li>
-                                    <li>Penjualan: im_jual</li>
-                                </ul>
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                    Max file size: 7GB
-                                </p>
-                            </div>
-                            <div className="pt-10">
-                                <Button
-                                    onClick={() => setIsUploadDialogOpen(true)}
-                                    className="w-full"
-                                    variant="default"
-                                >
-                                    <Upload className="mr-2 h-4 w-4" />
-                                    Upload IM Data
-                                </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
                 </div>
             </div>
 
@@ -429,6 +483,7 @@ export default function ValidationSettingIndex({
                 isOpen={isUploadDialogOpen}
                 onClose={() => setIsUploadDialogOpen(false)}
                 onConfirm={handleImDataUpload}
+                initialDataType={uploadDataType}
             />
         </AppLayout>
     );
