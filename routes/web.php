@@ -1,44 +1,33 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
-use App\Http\Controllers\PenjualanController;
-use App\Http\Controllers\PembelianController;
-use App\Http\Controllers\ValidationDataController;
-use App\Http\Controllers\UsersController;
-use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
 | Web Routes
 |--------------------------------------------------------------------------
-| Routes are organized by:
-| 1. Public routes
-| 2. Authenticated routes
-| 3. Penjualan (Sales) routes
-| 4. Pembelian (Purchase) routes
-| 5. Admin routes (user management, activity logs)
 |
-| Note: Controllers delegate to Services for all business logic
+| Main application routes. Feature-specific routes are organized in
+| the routes/features/ directory for better maintainability.
+|
 */
 
-// Public Routes
+// Public routes
 Route::get('/', function () {
     return Inertia::render('welcome');
 })->name('home');
 
-// Maintenance Route (for users when validation data is empty)
+// Maintenance route (when validation data is empty)
 Route::middleware(['auth'])->get('/maintenance', function () {
-    // Check if validation data is now available
     $pembelianInfo = \App\Models\ImDataInfo::getInfo('im_purchases_and_return');
     $penjualanInfo = \App\Models\ImDataInfo::getInfo('im_jual');
     
     $isPembelianEmpty = !$pembelianInfo || $pembelianInfo->row_count === 0;
     $isPenjualanEmpty = !$penjualanInfo || $penjualanInfo->row_count === 0;
     
-    // If data is now available, flag it so frontend can redirect
     $hasValidationData = !($isPembelianEmpty && $isPenjualanEmpty);
     
     return Inertia::render('maintenance', [
@@ -46,140 +35,41 @@ Route::middleware(['auth'])->get('/maintenance', function () {
     ]);
 })->name('maintenance');
 
-// Authenticated Routes
+// Dashboard
 Route::middleware(['auth', 'verified', 'check.validation.data'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+});
 
-    /*
-    |--------------------------------------------------------------------------
-    | Penjualan (Sales) Routes
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/penjualan', [PenjualanController::class, 'index'])->name('penjualan.index');
-    Route::get('/history/penjualan', [PenjualanController::class, 'history'])->name('penjualan.history');
-    Route::get('/penjualan/reguler', [PenjualanController::class, 'reguler'])->name('penjualan.reguler');
-    Route::get('/penjualan/ecommerce', [PenjualanController::class, 'ecommerce'])->name('penjualan.ecommerce');
-    Route::get('/penjualan/debitur', [PenjualanController::class, 'debitur'])->name('penjualan.debitur');
-    Route::get('/penjualan/konsi', [PenjualanController::class, 'konsi'])->name('penjualan.konsi');
-
-    // File Operations (Upload, Validation, Preview)
-    Route::post('/penjualan/save/{type}', [PenjualanController::class, 'save'])->name('penjualan.save');
-    Route::post('/penjualan/validate-{type}', [PenjualanController::class, 'validateFile'])->name('penjualan.validateFile');
-    Route::get('/penjualan/validation/{id}/status', fn($id) => app(ValidationDataController::class)->getValidationStatus($id, 'penjualan'))->name('penjualan.validation.status');
-    Route::get('/penjualan/preview/{filename}', [PenjualanController::class, 'preview'])->name('penjualan.preview');
-    Route::post('/penjualan/process/{filename}', [PenjualanController::class, 'processWithHeader'])->name('penjualan.processWithHeader');
-
-    // Validation Results
-    Route::get('penjualan/{id}', [PenjualanController::class, 'show'])->name('penjualan.show');
-    Route::get('penjualan/{id}/chart-data', [ValidationDataController::class, 'getChartData'])->name('penjualan.chart-data');
-    Route::get('penjualan/{id}/invalid-groups', [ValidationDataController::class, 'getInvalidGroups'])->name('penjualan.invalid-groups');
-    Route::get('penjualan/{id}/invalid-groups/all', [ValidationDataController::class, 'getAllInvalidGroups'])->name('penjualan.invalid-groups-all');
-    Route::get('penjualan/{id}/matched-records', [ValidationDataController::class, 'getMatchedRecords'])->name('penjualan.matched-records');
-    Route::get('penjualan/{id}/matched-records/all', [ValidationDataController::class, 'getAllMatchedGroups'])->name('penjualan.matched-records-all');
-    Route::get('penjualan/{id}/document-comparison', [ValidationDataController::class, 'getDocumentComparisonData'])->name('penjualan.document-comparison');
-    Route::get('penjualan/history/data', fn(Request $request) => app(ValidationDataController::class)->getValidationHistory($request, 'penjualan'))->name('penjualan.history.data');
-    Route::post('penjualan/history/check-processing', fn(Request $request) => app(ValidationDataController::class)->checkProcessingStatus($request, 'penjualan'))->name('penjualan.history.check-processing');
-
-    // Report Routes (handled by ReportManagementController)
-    Route::post('penjualan/{id}/report', [App\Http\Controllers\ReportManagementController::class, 'submitReport'])->name('penjualan.report.submit');
-    Route::get('penjualan/{id}/report', [App\Http\Controllers\ReportManagementController::class, 'getReport'])->name('penjualan.report.get');
-
-    /*
-    |--------------------------------------------------------------------------
-    | Pembelian (Purchase) Routes
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/pembelian', [PembelianController::class, 'index'])->name('pembelian.index');
-    Route::get('/history/pembelian', [PembelianController::class, 'history'])->name('pembelian.history');
-    Route::get('/pembelian/reguler', [PembelianController::class, 'reguler'])->name('pembelian.reguler');
-    Route::get('/pembelian/retur', [PembelianController::class, 'retur'])->name('pembelian.retur');
-    Route::get('/pembelian/urgent', [PembelianController::class, 'urgent'])->name('pembelian.urgent');
-
-    // File Operations (Upload, Validation, Preview)
-    Route::post('/pembelian/save/{type}', [PembelianController::class, 'save'])->name('pembelian.save');
-    Route::post('/pembelian/validate-{type}', [PembelianController::class, 'validateFile'])->name('pembelian.validateFile');
-    Route::get('/pembelian/validation/{id}/status', fn($id) => app(ValidationDataController::class)->getValidationStatus($id, 'pembelian'))->name('pembelian.validation.status');
-    Route::get('/pembelian/preview/{filename}', [PembelianController::class, 'preview'])->name('pembelian.preview');
-    Route::post('/pembelian/process/{filename}', [PembelianController::class, 'processWithHeader'])->name('pembelian.processWithHeader');
-
-    // Validation Results
-    Route::get('pembelian/{id}', [PembelianController::class, 'show'])->name('pembelian.show');
-    Route::get('pembelian/{id}/chart-data', [ValidationDataController::class, 'getChartData'])->name('pembelian.chart-data');
-    Route::get('pembelian/{id}/invalid-groups', [ValidationDataController::class, 'getInvalidGroups'])->name('pembelian.invalid-groups');
-    Route::get('pembelian/{id}/invalid-groups/all', [ValidationDataController::class, 'getAllInvalidGroups'])->name('pembelian.invalid-groups-all');
-    Route::get('pembelian/{id}/matched-records', [ValidationDataController::class, 'getMatchedRecords'])->name('pembelian.matched-records');
-    Route::get('pembelian/{id}/matched-records/all', [ValidationDataController::class, 'getAllMatchedGroups'])->name('pembelian.matched-records-all');
-    Route::get('pembelian/{id}/document-comparison', [ValidationDataController::class, 'getDocumentComparisonData'])->name('pembelian.document-comparison');
-    Route::get('pembelian/history/data', fn(Request $request) => app(ValidationDataController::class)->getValidationHistory($request, 'pembelian'))->name('pembelian.history.data');
-    Route::post('pembelian/history/check-processing', fn(Request $request) => app(ValidationDataController::class)->checkProcessingStatus($request, 'pembelian'))->name('pembelian.history.check-processing');
-
-    // Report Routes (handled by ReportManagementController)
-    Route::post('pembelian/{id}/report', [App\Http\Controllers\ReportManagementController::class, 'submitReport'])->name('pembelian.report.submit');
-    Route::get('pembelian/{id}/report', [App\Http\Controllers\ReportManagementController::class, 'getReport'])->name('pembelian.report.get');
-
-}); // End of auth middleware group
+// Notifications (all authenticated users)
+Route::middleware(['auth', 'verified', 'check.validation.data'])->group(function () {
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
+    Route::post('/notifications/{id}/mark-as-read', [NotificationController::class, 'markAsRead'])->name('notifications.mark-as-read');
+    Route::post('/notifications/mark-all-as-read', [NotificationController::class, 'markAllAsRead'])->name('notifications.mark-all-as-read');
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy'])->name('notifications.destroy');
+});
 
 /*
 |--------------------------------------------------------------------------
-| Admin Routes (Super Admin Only)
+| Feature Routes
 |--------------------------------------------------------------------------
+|
+| Load feature-specific routes from dedicated files
+|
 */
-Route::middleware(['auth', 'verified', 'check.validation.data', 'role:super_admin'])->group(function () {
-    Route::get('/users', [UsersController::class, 'index'])->name('users.index');
-    Route::get('/users/{id}', [UsersController::class, 'show'])->name('users.show');
-    Route::put('/users/{user}', [UsersController::class, 'update'])->name('users.update');
-    Route::post('/users', [UsersController::class, 'store'])->name('users.store');
-    Route::post('/users/check-email', [UsersController::class, 'checkEmail'])->name('users.check-email');
-    Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
-});
 
-// Activity Logs
-Route::middleware(['auth', 'verified', 'check.validation.data', 'role:super_admin'])->group(function () {
-    Route::get('/activity-logs', [ActivityLogController::class, 'index'])->name('activity-logs.index');
-    Route::get('/activity-logs/{activityLog}', [ActivityLogController::class, 'show'])->name('activity-logs.show');
-});
+require __DIR__ . '/features/penjualan.php';
+require __DIR__ . '/features/pembelian.php';
+require __DIR__ . '/features/admin.php';
 
-// Validation Settings (Super Admin Only)
-Route::middleware(['auth', 'verified', 'role:super_admin'])->group(function () {
-    Route::get('/validation-setting', [App\Http\Controllers\ValidationSettingController::class, 'index'])->name('validation-setting.index');
-    Route::post('/validation-setting/tolerance', [App\Http\Controllers\ValidationSettingController::class, 'updateTolerance'])->name('validation-setting.tolerance');
-    Route::post('/validation-setting/upload-im-data', [App\Http\Controllers\ValidationSettingController::class, 'uploadImData'])->name('validation-setting.upload-im-data');
-    Route::post('/validation-setting/refresh-count', [App\Http\Controllers\ValidationSettingController::class, 'refreshImDataCount'])->name('validation-setting.refresh-count');
-});
+/*
+|--------------------------------------------------------------------------
+| Auth & Settings Routes
+|--------------------------------------------------------------------------
+|
+| Authentication and user settings routes
+|
+*/
 
-// Permission Management (Super Admin Only)
-Route::middleware(['auth', 'verified', 'check.validation.data', 'role:super_admin'])->group(function () {
-    Route::get('/permissions', [App\Http\Controllers\PermissionController::class, 'index'])->name('permissions.index');
-
-    // Role management
-    Route::post('/permissions/roles', [App\Http\Controllers\PermissionController::class, 'storeRole'])->name('permissions.roles.store');
-    Route::put('/permissions/roles/{role}', [App\Http\Controllers\PermissionController::class, 'updateRole'])->name('permissions.roles.update');
-    Route::delete('/permissions/roles/{role}', [App\Http\Controllers\PermissionController::class, 'destroyRole'])->name('permissions.roles.destroy');
-
-    // Permission management
-    Route::post('/permissions/permissions', [App\Http\Controllers\PermissionController::class, 'storePermission'])->name('permissions.permissions.store');
-    Route::put('/permissions/permissions/{permission}', [App\Http\Controllers\PermissionController::class, 'updatePermission'])->name('permissions.permissions.update');
-    Route::delete('/permissions/permissions/{permission}', [App\Http\Controllers\PermissionController::class, 'destroyPermission'])->name('permissions.permissions.destroy');
-});
-
-// Notifications (All authenticated users)
-Route::middleware(['auth', 'verified', 'check.validation.data'])->group(function () {
-    Route::get('/notifications', [App\Http\Controllers\NotificationController::class, 'index'])->name('notifications.index');
-    Route::get('/notifications/unread-count', [App\Http\Controllers\NotificationController::class, 'unreadCount'])->name('notifications.unread-count');
-    Route::post('/notifications/{id}/mark-as-read', [App\Http\Controllers\NotificationController::class, 'markAsRead'])->name('notifications.mark-as-read');
-    Route::post('/notifications/mark-all-as-read', [App\Http\Controllers\NotificationController::class, 'markAllAsRead'])->name('notifications.mark-all-as-read');
-    Route::delete('/notifications/{id}', [App\Http\Controllers\NotificationController::class, 'destroy'])->name('notifications.destroy');
-});
-
-// Report Management (Super Admin Only)
-Route::middleware(['auth', 'verified', 'check.validation.data', 'role:super_admin'])->group(function () {
-    Route::get('/report-management', [App\Http\Controllers\ReportManagementController::class, 'index'])->name('report-management.index');
-    Route::get('/report-management/accepted', [App\Http\Controllers\ReportManagementController::class, 'getAcceptedReports'])->name('report-management.accepted');
-    Route::get('/report-management/all', [App\Http\Controllers\ReportManagementController::class, 'getAllReports'])->name('report-management.all');
-    Route::post('/report-management/report/{id}/accept', [App\Http\Controllers\ReportManagementController::class, 'acceptReport'])->name('report-management.report.accept');
-    Route::post('/report-management/report/{id}/revoke', [App\Http\Controllers\ReportManagementController::class, 'revokeReport'])->name('report-management.report.revoke');
-});
-
-// Include additional route files
-require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';
+require __DIR__ . '/settings.php';
