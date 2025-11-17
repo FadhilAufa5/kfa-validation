@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import type { BreadcrumbItem } from "@/types";
 import RoleDialog from "@/components/RoleDialog";
 import PermissionDialog from "@/components/PermissionDialog";
+import { hasPermission } from "@/lib/permissions";
 
 interface Permission {
   id: number;
@@ -46,6 +47,9 @@ export default function PermissionsIndex({ roles, permissions }: PermissionsInde
   const [selectedPermission, setSelectedPermission] = useState<Permission | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'role' | 'permission'; item: Role | Permission } | null>(null);
+
+  // Check if user has permission to manage roles
+  const canManageRoles = hasPermission('roles.manage');
 
   const breadcrumbs: BreadcrumbItem[] = [
     { title: "Permission Management", href: "/permissions" }
@@ -162,10 +166,12 @@ export default function PermissionsIndex({ roles, permissions }: PermissionsInde
                 <CardTitle>Roles</CardTitle>
                 <CardDescription>Manage user roles and their permissions</CardDescription>
               </div>
-              <Button onClick={handleAddRole}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Role
-              </Button>
+              {canManageRoles && (
+                <Button onClick={handleAddRole}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Role
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent>
@@ -183,24 +189,26 @@ export default function PermissionsIndex({ roles, permissions }: PermissionsInde
                         </CardTitle>
                         <p className="text-xs text-muted-foreground mt-1">{role.name}</p>
                       </div>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditRole(role)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        {role.name !== 'super_admin' && (
+                      {canManageRoles && (
+                        <div className="flex gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleDeleteRole(role)}
+                            onClick={() => handleEditRole(role)}
                           >
-                            <Trash2 className="h-4 w-4 text-red-500" />
+                            <Edit className="h-4 w-4" />
                           </Button>
-                        )}
-                      </div>
+                          {role.name !== 'super_admin' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteRole(role)}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -239,10 +247,12 @@ export default function PermissionsIndex({ roles, permissions }: PermissionsInde
                 <CardTitle>Permissions</CardTitle>
                 <CardDescription>Manage system permissions</CardDescription>
               </div>
-              <Button onClick={handleAddPermission} variant="outline">
-                <Plus className="mr-2 h-4 w-4" />
-                Add Permission
-              </Button>
+              {canManageRoles && (
+                <Button onClick={handleAddPermission} variant="outline">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Permission
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -263,22 +273,24 @@ export default function PermissionsIndex({ roles, permissions }: PermissionsInde
                           <p className="text-xs text-muted-foreground mt-1">{permission.name}</p>
                           <p className="text-xs text-muted-foreground mt-1">{permission.description || 'No description'}</p>
                         </div>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditPermission(permission)}
-                          >
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeletePermission(permission)}
-                          >
-                            <Trash2 className="h-3 w-3 text-red-500" />
-                          </Button>
-                        </div>
+                        {canManageRoles && (
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditPermission(permission)}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeletePermission(permission)}
+                            >
+                              <Trash2 className="h-3 w-3 text-red-500" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </Card>
                   ))}
