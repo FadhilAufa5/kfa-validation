@@ -1,9 +1,10 @@
 import { usePage } from '@inertiajs/react';
+import React from 'react';
 
 /**
  * Hook to get user permissions
  */
-export function usePermissions() {
+export function usePermissions(): string[] {
   const { auth } = usePage().props as { auth: { permissions: string[] } };
   return auth.permissions || [];
 }
@@ -11,7 +12,7 @@ export function usePermissions() {
 /**
  * Hook to get user role
  */
-export function useRole() {
+export function useRole(): { id: number; name: string; display_name: string } | null {
   const { auth } = usePage().props as { auth: { role: { id: number; name: string; display_name: string } | null } };
   return auth.role;
 }
