@@ -1,4 +1,5 @@
 import ImDataUploadDialog from '@/components/ImDataUploadDialog';
+import ImDataInfoDialog from '@/components/ImDataInfoDialog';
 import ToleranceDialog from '@/components/ToleranceDialog';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,7 +12,7 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { Head, router } from '@inertiajs/react';
-import { Clock, Database, Settings, Upload, User, RefreshCw } from 'lucide-react';
+import { Clock, Database, Settings, Upload, User, RefreshCw, Info } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { Toaster, toast } from 'sonner';
 import { route } from 'ziggy-js';
@@ -47,6 +48,7 @@ export default function ValidationSettingIndex({
 }: ValidationSettingProps) {
     const [isToleranceDialogOpen, setIsToleranceDialogOpen] = useState(false);
     const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+    const [isInfoDialogOpen, setIsInfoDialogOpen] = useState(false);
     const [uploadDataType, setUploadDataType] = useState<string>('pembelian');
     const [refreshingTable, setRefreshingTable] = useState<string | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -167,6 +169,11 @@ export default function ValidationSettingIndex({
     const handleOpenUploadDialog = (dataType: string) => {
         setUploadDataType(dataType);
         setIsUploadDialogOpen(true);
+    };
+
+    const handleOpenInfoDialog = (dataType: string) => {
+        setUploadDataType(dataType);
+        setIsInfoDialogOpen(true);
     };
 
     const handleRefreshCount = (tableName: string) => {
@@ -298,14 +305,25 @@ export default function ValidationSettingIndex({
                                                 </div>
                                             </div>
                                         </div>
+                                        <div className="flex gap-2 md:ml-4 flex-shrink-0">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleOpenInfoDialog('pembelian')}
+                                            className="gap-2"
+                                        >
+                                            <Info className="h-4 w-4" />
+                                            Info
+                                        </Button>
                                         <Button
                                             size="sm"
                                             onClick={() => handleOpenUploadDialog('pembelian')}
-                                            className="gap-2 md:ml-4 flex-shrink-0"
+                                            className="gap-2"
                                         >
                                             <Upload className="h-4 w-4" />
                                             Update IM Data
                                         </Button>
+                                    </div>
                                     </div>
                                 </>
                             ) : (
@@ -385,14 +403,25 @@ export default function ValidationSettingIndex({
                                                 </div>
                                             </div>
                                         </div>
+                                        <div className="flex gap-2 md:ml-4 flex-shrink-0">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleOpenInfoDialog('penjualan')}
+                                            className="gap-2"
+                                        >
+                                            <Info className="h-4 w-4" />
+                                            Info
+                                        </Button>
                                         <Button
                                             size="sm"
                                             onClick={() => handleOpenUploadDialog('penjualan')}
-                                            className="gap-2 md:ml-4 flex-shrink-0"
+                                            className="gap-2"
                                         >
                                             <Upload className="h-4 w-4" />
                                             Update IM Data
                                         </Button>
+                                    </div>
                                     </div>
                                 </>
                             ) : (
@@ -484,6 +513,12 @@ export default function ValidationSettingIndex({
                 onClose={() => setIsUploadDialogOpen(false)}
                 onConfirm={handleImDataUpload}
                 initialDataType={uploadDataType}
+            />
+
+            <ImDataInfoDialog
+                isOpen={isInfoDialogOpen}
+                onClose={() => setIsInfoDialogOpen(false)}
+                dataType={uploadDataType as 'pembelian' | 'penjualan'}
             />
         </AppLayout>
     );
