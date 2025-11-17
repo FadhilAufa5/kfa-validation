@@ -148,31 +148,41 @@ export default function RoleDialog({
 
         setIsSubmitting(true);
 
-        const url = role 
-            ? route('permissions.roles.update', role.id)
-            : route('permissions.roles.store');
-        
-        const method = role ? 'PUT' : 'POST';
-
-        router[method](url, formData, {
-            onSuccess: () => {
-                toast.success(
-                    role 
-                        ? "Role updated successfully!" 
-                        : "Role created successfully!"
-                );
-                onClose();
-                setIsSubmitting(false);
-            },
-            onError: (errors) => {
-                setErrors(errors);
-                const errorMessage = typeof errors === 'string' 
-                    ? errors 
-                    : errors?.message || "Failed to save role. Please check the form for errors.";
-                toast.error(errorMessage);
-                setIsSubmitting(false);
-            },
-        });
+        if (role) {
+            // Update existing role
+            router.put(route('permissions.roles.update', role.id), formData, {
+                onSuccess: () => {
+                    toast.success("Role updated successfully!");
+                    onClose();
+                    setIsSubmitting(false);
+                },
+                onError: (errors) => {
+                    setErrors(errors);
+                    const errorMessage = typeof errors === 'string' 
+                        ? errors 
+                        : errors?.message || "Failed to update role. Please check the form for errors.";
+                    toast.error(errorMessage);
+                    setIsSubmitting(false);
+                },
+            });
+        } else {
+            // Create new role
+            router.post(route('permissions.roles.store'), formData, {
+                onSuccess: () => {
+                    toast.success("Role created successfully!");
+                    onClose();
+                    setIsSubmitting(false);
+                },
+                onError: (errors) => {
+                    setErrors(errors);
+                    const errorMessage = typeof errors === 'string' 
+                        ? errors 
+                        : errors?.message || "Failed to create role. Please check the form for errors.";
+                    toast.error(errorMessage);
+                    setIsSubmitting(false);
+                },
+            });
+        }
     };
 
     const isCategoryFullySelected = (category: string) => {

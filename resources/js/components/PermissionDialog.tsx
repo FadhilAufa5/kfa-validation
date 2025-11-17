@@ -114,28 +114,35 @@ export default function PermissionDialog({
 
         setIsSubmitting(true);
 
-        const url = permission 
-            ? route('permissions.permissions.update', permission.id)
-            : route('permissions.permissions.store');
-        
-        const method = permission ? 'PUT' : 'POST';
-
-        router[method](url, formData, {
-            onSuccess: () => {
-                toast.success(
-                    permission 
-                        ? "Permission updated successfully!" 
-                        : "Permission created successfully!"
-                );
-                onClose();
-                setIsSubmitting(false);
-            },
-            onError: (errors) => {
-                setErrors(errors);
-                toast.error("Failed to save permission. Please check the form for errors.");
-                setIsSubmitting(false);
-            },
-        });
+        if (permission) {
+            // Update existing permission
+            router.put(route('permissions.permissions.update', permission.id), formData, {
+                onSuccess: () => {
+                    toast.success("Permission updated successfully!");
+                    onClose();
+                    setIsSubmitting(false);
+                },
+                onError: (errors) => {
+                    setErrors(errors);
+                    toast.error("Failed to update permission. Please check the form for errors.");
+                    setIsSubmitting(false);
+                },
+            });
+        } else {
+            // Create new permission
+            router.post(route('permissions.permissions.store'), formData, {
+                onSuccess: () => {
+                    toast.success("Permission created successfully!");
+                    onClose();
+                    setIsSubmitting(false);
+                },
+                onError: (errors) => {
+                    setErrors(errors);
+                    toast.error("Failed to create permission. Please check the form for errors.");
+                    setIsSubmitting(false);
+                },
+            });
+        }
     };
 
     const getCategoryName = (category: string) => {
