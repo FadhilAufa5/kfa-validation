@@ -2,6 +2,8 @@
 
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckValidationData;
+use App\Http\Middleware\CheckPermission;
+use App\Http\Middleware\CheckAnyPermission;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\LastUserActivity;
@@ -29,6 +31,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => CheckRole::class,
             'check.validation.data' => CheckValidationData::class,
+            'permission' => CheckPermission::class,
+            'permission.any' => CheckAnyPermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Spatie\Permission\Traits\HasRoles;
 
 class Permission extends Model
 {
@@ -12,11 +13,23 @@ class Permission extends Model
         'display_name',
         'category',
         'description',
+        'guard_name',
     ];
+
+    public function __construct(array $attributes = [])
+    {
+        $attributes['guard_name'] = $attributes['guard_name'] ?? 'web';
+        parent::__construct($attributes);
+    }
 
     public function roles(): BelongsToMany
     {
-        return $this->belongsToMany(Role::class, 'role_permissions');
+        return $this->belongsToMany(
+            config('permission.models.role', Role::class),
+            'role_permissions',
+            'permission_id',
+            'role_id'
+        );
     }
 
     public static function getGroupedPermissions(): array

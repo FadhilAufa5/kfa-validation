@@ -5,23 +5,38 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Permission\Traits\HasPermissions;
 
 class Role extends Model
 {
+    use HasPermissions;
+
     protected $fillable = [
         'name',
         'display_name',
         'description',
         'is_default',
+        'guard_name',
     ];
 
     protected $casts = [
         'is_default' => 'boolean',
     ];
 
+    public function __construct(array $attributes = [])
+    {
+        $attributes['guard_name'] = $attributes['guard_name'] ?? 'web';
+        parent::__construct($attributes);
+    }
+
     public function permissions(): BelongsToMany
     {
-        return $this->belongsToMany(Permission::class, 'role_permissions');
+        return $this->belongsToMany(
+            config('permission.models.permission', Permission::class),
+            'role_permissions',
+            'role_id',
+            'permission_id'
+        );
     }
 
     public function users(): HasMany

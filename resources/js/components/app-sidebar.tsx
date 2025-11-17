@@ -14,6 +14,7 @@ import {
 import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 import AppLogo from './app-logo';
+import { hasPermission, hasAnyPermission } from '@/lib/permissions';
 
 import { NavMain } from '@/components/nav-main';
 import { NavPembelian } from '@/components/nav-pembelian';
@@ -106,8 +107,29 @@ const reportManagementNavItems: NavItem[] = [
 // ];
 
 export function AppSidebar() {
-    const { auth } = usePage().props as { auth: { user: { role: string } } };
-    const isSuperAdmin = auth?.user?.role === 'super_admin';
+    // Get filtered nav items based on permissions
+    const visiblePembelianItems = pembelianNavItems.filter(item => {
+        if (item.href === '/pembelian') return hasPermission('upload.pembelian');
+        if (item.href === '/history/pembelian') return hasPermission('history.pembelian');
+        return false;
+    });
+
+    const visiblePenjualanItems = penjualanNavItems.filter(item => {
+        if (item.href === '/penjualan') return hasPermission('upload.penjualan');
+        if (item.href === '/history/penjualan') return hasPermission('history.penjualan');
+        return false;
+    });
+
+    const visibleUyItems = uyNavItems.filter(item => {
+        if (item.href === '/users') return hasPermission('users.manage');
+        if (item.href === '/permissions') return hasPermission('roles.manage');
+        if (item.href === '/activity-logs') return hasPermission('logs.view');
+        if (item.href === '/validation-setting') return hasPermission('settings.validation');
+        return false;
+    });
+
+    // Check if user can see report management
+    const canSeeReportManagement = hasAnyPermission(['roles.manage', 'users.manage']);
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -127,13 +149,26 @@ export function AppSidebar() {
             {/* Main Navigation */}
             <SidebarContent>
                 <NavMain items={mainNavItems} />
-                <NavPembelian items={pembelianNavItems} />
-                <NavPenjualan items={penjualanNavItems} />
-                {/* Only show Report Management & User Management for super_admin */}
-                {isSuperAdmin && (
+                
+                {/* Show Pembelian section if user has any pembelian permissions */}
+                {visiblePembelianItems.length > 0 && (
+                    <NavPembelian items={visiblePembelianItems} />
+                )}
+                
+                {/* Show Penjualan section if user has any penjualan permissions */}
+                {visiblePenjualanItems.length > 0 && (
+                    <NavPenjualan items={visiblePenjualanItems} />
+                )}
+                
+                {/* Show Report Management if user has permission */}
+                {canSeeReportManagement && (
                     <NavReportManagement items={reportManagementNavItems} />
                 )}
-                {isSuperAdmin && <NavUy items={uyNavItems} />}
+                
+                {/* Show Admin section if user has any admin permissions */}
+                {visibleUyItems.length > 0 && (
+                    <NavUy items={visibleUyItems} />
+                )}
             </SidebarContent>
 
             {/* Footer */}

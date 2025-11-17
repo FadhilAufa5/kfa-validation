@@ -1,8 +1,16 @@
 import { InertiaLinkProps } from '@inertiajs/react';
 import { LucideIcon } from 'lucide-react';
 
+export interface Role {
+    id: number;
+    name: string;
+    display_name: string;
+}
+
 export interface Auth {
     user: User;
+    permissions: string[];
+    role: Role | null;
 }
 
 export interface BreadcrumbItem {

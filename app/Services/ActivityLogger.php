@@ -13,6 +13,8 @@ class ActivityLogger
     const CATEGORY_USER = 'User';
     const CATEGORY_SETTING = 'Setting';
     const CATEGORY_REPORT = 'Report';
+    const CATEGORY_PERMISSION = 'Permission';
+    const CATEGORY_ROLE = 'Role';
 
     public static function log(
         string $action,
