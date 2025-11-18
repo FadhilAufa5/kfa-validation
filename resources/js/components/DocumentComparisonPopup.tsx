@@ -310,6 +310,19 @@ const DocumentComparisonPopup = React.memo(
                                             </Badge>
                                         </div>
                                     )}
+                                    {uploadedTotal !== null && sourceTotal !== null && (
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-orange-600">
+                                                Selisih:
+                                            </span>
+                                            <Badge
+                                                variant="outline"
+                                                className="px-2 py-1 border-orange-300 text-orange-800 dark:border-orange-600 dark:text-orange-300"
+                                            >
+                                                {formatIDR(uploadedTotal - sourceTotal)}
+                                            </Badge>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         {!isLoading &&
