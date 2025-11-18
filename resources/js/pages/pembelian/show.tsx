@@ -24,6 +24,7 @@ import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
     CheckCircle2,
+    Download,
     FileCheck2,
     FileText,
     FileX2,
@@ -179,6 +180,7 @@ export default function PembelianShow() {
         validationData && validationData.mismatched > 0 ? 'invalid' : 'valid'
     );
     const [chartDataLoaded, setChartDataLoaded] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     // Calculate total groups (invalid + matched)
     const totalGroups = useMemo(() => {
@@ -491,6 +493,40 @@ export default function PembelianShow() {
         }
     };
 
+    const handleExportData = async (type: 'invalid' | 'matched') => {
+        setIsExporting(true);
+        try {
+            const url = `/pembelian/${validationId}/export/${type}`;
+            const response = await axios.get(url, {
+                responseType: 'blob',
+            });
+
+            const contentDisposition = response.headers['content-disposition'];
+            let filename = `export_${type}_${validationId}.csv`;
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+
+            const blob = new Blob([response.data], { type: 'text/csv' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch (error) {
+            console.error('Error exporting data:', error);
+            alert('Gagal mengekspor data. Silakan coba lagi.');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     // Loading state jika data belum ada
     if (!validationData) {
         return (
@@ -636,6 +672,26 @@ export default function PembelianShow() {
                         {/* Invalid Groups Tab */}
                         {validationData.mismatched > 0 && (
                             <TabsContent value="invalid" className="space-y-4">
+                                <div className="mb-4">
+                                    <Button
+                                        onClick={() => handleExportData('invalid')}
+                                        disabled={isExporting}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-white"
+                                        size="lg"
+                                    >
+                                        {isExporting ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                                <span>Mengekspor...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Download className="mr-2 h-5 w-5" />
+                                                <span>Export Data Tidak Valid</span>
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
                                 <InvalidGroupsTabContent
                                     uniqueCategories={uniqueCategories}
                                     uniqueSources={uniqueSources}
@@ -670,6 +726,26 @@ export default function PembelianShow() {
                         {/* Matched Groups Tab */}
                         {validationData.matched > 0 && (
                             <TabsContent value="valid" className="space-y-4">
+                                <div className="mb-4">
+                                    <Button
+                                        onClick={() => handleExportData('matched')}
+                                        disabled={isExporting}
+                                        className="w-full bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 text-white"
+                                        size="lg"
+                                    >
+                                        {isExporting ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                                <span>Mengekspor...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Download className="mr-2 h-5 w-5" />
+                                                <span>Export Data Valid</span>
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
                                 <MatchedGroupsTabContent
                                     uniqueNotes={uniqueNotes}
                                     noteFilter={noteFilter}

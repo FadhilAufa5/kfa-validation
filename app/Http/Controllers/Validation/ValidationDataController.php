@@ -7,12 +7,14 @@ use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use App\Services\ValidationDataService;
 use App\Services\DocumentComparisonService;
+use App\Services\ExportService;
 
 class ValidationDataController extends Controller
 {
     public function __construct(
         private ValidationDataService $validationDataService,
-        private DocumentComparisonService $documentComparisonService
+        private DocumentComparisonService $documentComparisonService,
+        private ExportService $exportService
     ) {}
 
     public function getValidationStatus($id, $documentType)
@@ -155,6 +157,34 @@ class ValidationDataController extends Controller
             return response()->json($data);
         } catch (\Exception $e) {
             Log::error('Document comparison failed', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function exportInvalidData($id)
+    {
+        try {
+            $result = $this->exportService->exportInvalidData($id);
+            return $this->exportService->generateCsvResponse($result['data'], $result['filename']);
+        } catch (\Exception $e) {
+            Log::error('Export invalid data failed', [
+                'validation_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function exportMatchedData($id)
+    {
+        try {
+            $result = $this->exportService->exportMatchedData($id);
+            return $this->exportService->generateCsvResponse($result['data'], $result['filename']);
+        } catch (\Exception $e) {
+            Log::error('Export matched data failed', [
+                'validation_id' => $id,
+                'error' => $e->getMessage()
+            ]);
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }

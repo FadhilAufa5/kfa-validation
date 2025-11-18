@@ -135,75 +135,85 @@ export default function UploadPage({
     };
 
     /** Step 1: Upload & Preview **/
-async function handleUploadAndPreview() {
-    if (!data.document) {
-        setApiError('Silakan pilih file terlebih dahulu.');
-        return;
-    }
-
-    // Check if file needs conversion (xlsx or xls)
-    const fileExtension = data.document.name.split('.').pop()?.toLowerCase();
-    const requiresConversion = fileExtension === 'xlsx' || fileExtension === 'xls';
-    setNeedsConversion(requiresConversion);
-
-    setIsLoading(true);
-    setApiError(null);
-    setStep(requiresConversion ? 'converting' : 'previewing');
-    setUploadProgress(0);
-
-    // 🔥 Pastikan FormData langsung dari File object
-    const formData = new FormData();
-    formData.append('document', data.document); // nama harus sama dengan backend
-
-    try {
-        console.log('🚀 Mulai upload file ke:', saveUrl);
-        if (requiresConversion) {
-            console.log('📋 File requires conversion from', fileExtension, 'to CSV');
+    async function handleUploadAndPreview() {
+        if (!data.document) {
+            setApiError('Silakan pilih file terlebih dahulu.');
+            return;
         }
 
-        const uploadResponse = await axios.post(saveUrl, formData, {
-            withCredentials: true, // penting untuk Laravel session
-            headers: {
-                Accept: 'application/json',
-            },
-            onUploadProgress: (progressEvent) => {
-                const percentCompleted = Math.round(
-                    (progressEvent.loaded * 100) / (progressEvent.total || 1),
+        // Check if file needs conversion (xlsx or xls)
+        const fileExtension = data.document.name
+            .split('.')
+            .pop()
+            ?.toLowerCase();
+        const requiresConversion =
+            fileExtension === 'xlsx' || fileExtension === 'xls';
+        setNeedsConversion(requiresConversion);
+
+        setIsLoading(true);
+        setApiError(null);
+        setStep(requiresConversion ? 'converting' : 'previewing');
+        setUploadProgress(0);
+
+        // 🔥 Pastikan FormData langsung dari File object
+        const formData = new FormData();
+        formData.append('document', data.document); // nama harus sama dengan backend
+
+        try {
+            console.log('🚀 Mulai upload file ke:', saveUrl);
+            if (requiresConversion) {
+                console.log(
+                    '📋 File requires conversion from',
+                    fileExtension,
+                    'to CSV',
                 );
-                setUploadProgress(percentCompleted);
-            },
-        });
+            }
 
-        console.log('✅ Upload Response:', uploadResponse.data);
+            const uploadResponse = await axios.post(saveUrl, formData, {
+                withCredentials: true, // penting untuk Laravel session
+                headers: {
+                    Accept: 'application/json',
+                },
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round(
+                        (progressEvent.loaded * 100) /
+                            (progressEvent.total || 1),
+                    );
+                    setUploadProgress(percentCompleted);
+                },
+            });
 
-        const { filename } = uploadResponse.data || {};
-        if (!filename) throw new Error('Server tidak mengembalikan nama file.');
+            console.log('✅ Upload Response:', uploadResponse.data);
 
-        setUploadedFilename(filename);
+            const { filename } = uploadResponse.data || {};
+            if (!filename)
+                throw new Error('Server tidak mengembalikan nama file.');
 
-        // Show conversion complete before moving to preview
-        if (requiresConversion) {
-            setStep('previewing');
+            setUploadedFilename(filename);
+
+            // Show conversion complete before moving to preview
+            if (requiresConversion) {
+                setStep('previewing');
+            }
+
+            const previewUrl = route('pembelian.preview', { filename });
+            const previewResponse = await axios.get(previewUrl, {
+                withCredentials: true,
+            });
+
+            setPreviewData(previewResponse.data.preview);
+        } catch (error: any) {
+            console.error('❌ Upload failed:', error);
+            const msg =
+                error.response?.data?.message ||
+                error.response?.data?.error ||
+                error.message;
+            setApiError(msg || 'Gagal mengunggah file.');
+            setStep('initial');
+        } finally {
+            setIsLoading(false);
         }
-
-        const previewUrl = route('pembelian.preview', { filename });
-        const previewResponse = await axios.get(previewUrl, {
-            withCredentials: true,
-        });
-
-        setPreviewData(previewResponse.data.preview);
-    } catch (error: any) {
-        console.error('❌ Upload failed:', error);
-        const msg =
-            error.response?.data?.message ||
-            error.response?.data?.error ||
-            error.message;
-        setApiError(msg || 'Gagal mengunggah file.');
-        setStep('initial');
-    } finally {
-        setIsLoading(false);
     }
-}
 
     /** Step 2: Process File **/
     async function handleProcessFile() {
@@ -246,7 +256,12 @@ async function handleUploadAndPreview() {
             return;
         }
 
-        console.log('Validating File:', filenameToUse, 'with header row:', headerRow);
+        console.log(
+            'Validating File:',
+            filenameToUse,
+            'with header row:',
+            headerRow,
+        );
         setIsLoading(true);
         setApiError(null);
         setStep('validating');
@@ -303,6 +318,10 @@ async function handleUploadAndPreview() {
                                 <TriangleAlert className="h-4 w-4" />
                                 <AlertTitle>Terjadi Kesalahan</AlertTitle>
                                 <AlertDescription>{apiError}</AlertDescription>
+                                <AlertDescription>
+                                    Pastikan tidak ada (2), (3) di akhir nama
+                                    file{' '}
+                                </AlertDescription>
                             </Alert>
                         )}
                         {flash?.error && !apiError && (
@@ -320,17 +339,22 @@ async function handleUploadAndPreview() {
                             <div className="space-y-6">
                                 <div className="grid w-full items-center gap-1.5">
                                     <Label htmlFor="document">Pilih File</Label>
-   <Input
-    id="document"
-    type="file"
-    accept=".xlsx,.xls,.csv"
-    onChange={(e) => {
-        const file = e.target.files?.[0] ?? null;
-        setData('document', file);
-        console.log('📂 File selected:', file?.name, file?.size);
-    }}
-    disabled={isLoading}
-/>
+                                    <Input
+                                        id="document"
+                                        type="file"
+                                        accept=".xlsx,.xls,.csv"
+                                        onChange={(e) => {
+                                            const file =
+                                                e.target.files?.[0] ?? null;
+                                            setData('document', file);
+                                            console.log(
+                                                '📂 File selected:',
+                                                file?.name,
+                                                file?.size,
+                                            );
+                                        }}
+                                        disabled={isLoading}
+                                    />
                                 </div>
                                 <div className="flex justify-end">
                                     <Button
@@ -358,7 +382,8 @@ async function handleUploadAndPreview() {
                                     <Sheet className="h-4 w-4" />
                                     <AlertTitle>Mengonversi File</AlertTitle>
                                     <AlertDescription>
-                                        File Excel sedang dikonversi ke format CSV untuk diproses...
+                                        File Excel sedang dikonversi ke format
+                                        CSV untuk diproses...
                                     </AlertDescription>
                                 </Alert>
                                 <div className="space-y-2">
@@ -380,7 +405,9 @@ async function handleUploadAndPreview() {
                         {step === 'previewing' && isLoading && (
                             <div className="space-y-2">
                                 <p className="text-sm text-muted-foreground">
-                                    {needsConversion ? 'Memuat pratinjau...' : 'Mengunggah file...'}
+                                    {needsConversion
+                                        ? 'Memuat pratinjau...'
+                                        : 'Mengunggah file...'}
                                 </p>
                                 <Progress
                                     value={uploadProgress}

@@ -142,8 +142,12 @@ export default function UploadPage({
         }
 
         // Check if file needs conversion (xlsx or xls)
-        const fileExtension = data.document.name.split('.').pop()?.toLowerCase();
-        const requiresConversion = fileExtension === 'xlsx' || fileExtension === 'xls';
+        const fileExtension = data.document.name
+            .split('.')
+            .pop()
+            ?.toLowerCase();
+        const requiresConversion =
+            fileExtension === 'xlsx' || fileExtension === 'xls';
         setNeedsConversion(requiresConversion);
 
         setIsLoading(true);
@@ -158,7 +162,11 @@ export default function UploadPage({
         try {
             console.log('🚀 Mulai upload file ke:', saveUrl);
             if (requiresConversion) {
-                console.log('📋 File requires conversion from', fileExtension, 'to CSV');
+                console.log(
+                    '📋 File requires conversion from',
+                    fileExtension,
+                    'to CSV',
+                );
             }
 
             const uploadResponse = await axios.post(saveUrl, formData, {
@@ -168,7 +176,8 @@ export default function UploadPage({
                 },
                 onUploadProgress: (progressEvent) => {
                     const percentCompleted = Math.round(
-                        (progressEvent.loaded * 100) / (progressEvent.total || 1),
+                        (progressEvent.loaded * 100) /
+                            (progressEvent.total || 1),
                     );
                     setUploadProgress(percentCompleted);
                 },
@@ -177,7 +186,8 @@ export default function UploadPage({
             console.log('✅ Upload Response:', uploadResponse.data);
 
             const { filename } = uploadResponse.data || {};
-            if (!filename) throw new Error('Server tidak mengembalikan nama file.');
+            if (!filename)
+                throw new Error('Server tidak mengembalikan nama file.');
 
             setUploadedFilename(filename);
 
@@ -246,7 +256,12 @@ export default function UploadPage({
             return;
         }
 
-        console.log('Validating File:', filenameToUse, 'with header row:', headerRow);
+        console.log(
+            'Validating File:',
+            filenameToUse,
+            'with header row:',
+            headerRow,
+        );
         setIsLoading(true);
         setApiError(null);
         setStep('validating');
@@ -303,6 +318,10 @@ export default function UploadPage({
                                 <TriangleAlert className="h-4 w-4" />
                                 <AlertTitle>Terjadi Kesalahan</AlertTitle>
                                 <AlertDescription>{apiError}</AlertDescription>
+                                <AlertDescription>
+                                    Pastikan tidak ada (2), (3) di akhir nama
+                                    file{' '}
+                                </AlertDescription>
                             </Alert>
                         )}
                         {flash?.error && !apiError && (
@@ -325,9 +344,14 @@ export default function UploadPage({
                                         type="file"
                                         accept=".xlsx,.xls,.csv"
                                         onChange={(e) => {
-                                            const file = e.target.files?.[0] ?? null;
+                                            const file =
+                                                e.target.files?.[0] ?? null;
                                             setData('document', file);
-                                            console.log('📂 File selected:', file?.name, file?.size);
+                                            console.log(
+                                                '📂 File selected:',
+                                                file?.name,
+                                                file?.size,
+                                            );
                                         }}
                                         disabled={isLoading}
                                     />
@@ -358,7 +382,8 @@ export default function UploadPage({
                                     <Sheet className="h-4 w-4" />
                                     <AlertTitle>Mengonversi File</AlertTitle>
                                     <AlertDescription>
-                                        File Excel sedang dikonversi ke format CSV untuk diproses...
+                                        File Excel sedang dikonversi ke format
+                                        CSV untuk diproses...
                                     </AlertDescription>
                                 </Alert>
                                 <div className="space-y-2">
@@ -380,7 +405,9 @@ export default function UploadPage({
                         {step === 'previewing' && isLoading && (
                             <div className="space-y-2">
                                 <p className="text-sm text-muted-foreground">
-                                    {needsConversion ? 'Memuat pratinjau...' : 'Mengunggah file...'}
+                                    {needsConversion
+                                        ? 'Memuat pratinjau...'
+                                        : 'Mengunggah file...'}
                                 </p>
                                 <Progress
                                     value={uploadProgress}

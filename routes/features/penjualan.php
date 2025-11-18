@@ -46,6 +46,8 @@ Route::middleware(['auth', 'verified', 'check.validation.data'])->group(function
         Route::get('penjualan/{id}/matched-records', [ValidationDataController::class, 'getMatchedRecords'])->name('penjualan.matched-records');
         Route::get('penjualan/{id}/matched-records/all', [ValidationDataController::class, 'getAllMatchedGroups'])->name('penjualan.matched-records-all');
         Route::get('penjualan/{id}/document-comparison', [ValidationDataController::class, 'getDocumentComparisonData'])->name('penjualan.document-comparison');
+        Route::get('penjualan/{id}/export/invalid', [ValidationDataController::class, 'exportInvalidData'])->name('penjualan.export.invalid');
+        Route::get('penjualan/{id}/export/matched', [ValidationDataController::class, 'exportMatchedData'])->name('penjualan.export.matched');
     });
     
     // History - require history.penjualan permission

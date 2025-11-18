@@ -45,6 +45,8 @@ Route::middleware(['auth', 'verified', 'check.validation.data'])->group(function
         Route::get('pembelian/{id}/matched-records', [ValidationDataController::class, 'getMatchedRecords'])->name('pembelian.matched-records');
         Route::get('pembelian/{id}/matched-records/all', [ValidationDataController::class, 'getAllMatchedGroups'])->name('pembelian.matched-records-all');
         Route::get('pembelian/{id}/document-comparison', [ValidationDataController::class, 'getDocumentComparisonData'])->name('pembelian.document-comparison');
+        Route::get('pembelian/{id}/export/invalid', [ValidationDataController::class, 'exportInvalidData'])->name('pembelian.export.invalid');
+        Route::get('pembelian/{id}/export/matched', [ValidationDataController::class, 'exportMatchedData'])->name('pembelian.export.matched');
     });
     
     // History - require history.pembelian permission
