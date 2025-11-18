@@ -2,7 +2,7 @@ import { useState } from "react";
 import AppLayout from "@/layouts/app-layout";
 import { Head, router } from "@inertiajs/react";
 import { Button } from "@/components/ui/button";
-import { Search, Activity, Filter, X, Calendar, User as UserIcon, FileText } from "lucide-react";
+import { Search, Activity, Filter, X, Calendar, User as UserIcon, FileText, Eye } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import {
 import { format } from "date-fns";
 import { id as idLocale } from "date-fns/locale";
 import type { BreadcrumbItem } from "@/types";
+import ActivityLogDetailDialog from "./ActivityLogDetailDialog";
 
 interface User {
   id: number;
@@ -78,6 +79,8 @@ export default function ActivityLogsIndex({
   const [dateFrom, setDateFrom] = useState(filters.date_from || "");
   const [dateTo, setDateTo] = useState(filters.date_to || "");
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<ActivityLogType | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const breadcrumbs: BreadcrumbItem[] = [{ title: "Log Aktivitas", href: "/activity-logs" }];
 
@@ -160,6 +163,22 @@ export default function ActivityLogsIndex({
     } catch {
       return dateString;
     }
+  };
+
+  const canShowDetails = (action: string) => {
+    const lowerAction = action.toLowerCase();
+    return lowerAction.includes("create") || 
+           lowerAction.includes("tambah") || 
+           lowerAction.includes("update") || 
+           lowerAction.includes("edit") || 
+           lowerAction.includes("delete") || 
+           lowerAction.includes("hapus");
+  };
+
+  const handleShowDetails = (log: ActivityLogType, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedLog(log);
+    setDialogOpen(true);
   };
 
   return (
@@ -311,12 +330,13 @@ export default function ActivityLogsIndex({
                   <th className="px-3 py-2 text-left text-xs font-medium">Aksi</th>
                   <th className="px-3 py-2 text-left text-xs font-medium">Deskripsi</th>
                   <th className="py-2 text-left text-xs font-medium">IP Address</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium">Detail</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.data.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-xs text-muted-foreground">
+                    <td colSpan={8} className="px-3 py-6 text-center text-xs text-muted-foreground">
                       Tidak ada log aktivitas
                     </td>
                   </tr>
@@ -324,8 +344,7 @@ export default function ActivityLogsIndex({
                   logs.data.map((log) => (
                     <tr 
                       key={log.id}
-                      className="border-b hover:bg-muted/50 transition-colors cursor-pointer"
-                      onClick={() => router.visit(`/activity-logs/${log.id}`)}
+                      className="border-b hover:bg-muted/50 transition-colors"
                     >
                       <td className="px-3 py-2 text-xs">
                         <div className="flex items-center gap-2">
@@ -370,6 +389,18 @@ export default function ActivityLogsIndex({
                       </td>
                       <td className="px-3 py-2 text-xs text-muted-foreground">
                         {log.ip_address || "-"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {canShowDetails(log.action) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => handleShowDetails(log, e)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -431,6 +462,12 @@ export default function ActivityLogsIndex({
             </div>
           )}
         </div>
+
+        <ActivityLogDetailDialog
+          log={selectedLog}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
       </div>
     </AppLayout>
   );
