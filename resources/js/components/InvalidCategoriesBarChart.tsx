@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, ArrowRight, CheckCircle2, Info, Repeat2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Repeat2 } from 'lucide-react';
 import { useState } from 'react';
 
 interface InvalidCategoriesBarChartProps {
@@ -34,7 +34,8 @@ export default function InvalidCategoriesBarChart({
         if (!category) {
             return {
                 title: 'Tidak Ada Tindakan',
-                description: 'Tidak ditemukan data tidak valid.',
+                actionDescription: 'Tidak ditemukan data tidak valid.',
+                categoryDefinition: '',
                 icon: CheckCircle2,
                 color: 'text-green-600',
                 bgColor: 'bg-green-50 dark:bg-green-900/20',
@@ -45,7 +46,8 @@ export default function InvalidCategoriesBarChart({
         if (lowerCategory.includes('missing')) {
             return {
                 title: 'Perbaiki & Update IM',
-                description: 'Lakukan perbaikan pada field yang kosong dan update data Internal Memo (IM).',
+                actionDescription: 'Lakukan perbaikan pada field yang kosong dan update data Internal Memo (IM).',
+                categoryDefinition: 'ID Transaksi terdaftar, namun tidak memiliki value',
                 icon: AlertTriangle,
                 color: 'text-orange-600',
                 bgColor: 'bg-orange-50 dark:bg-orange-900/20',
@@ -53,7 +55,8 @@ export default function InvalidCategoriesBarChart({
         } else if (lowerCategory.includes('discrepancy') || lowerCategory.includes('descrepancy')) {
             return {
                 title: 'Evaluasi Transaksi',
-                description: 'Lakukan evaluasi terhadap transaksi pada file yang diupload untuk mencocokkan selisih.',
+                actionDescription: 'Lakukan evaluasi terhadap transaksi pada file yang diupload untuk mencocokkan selisih.',
+                categoryDefinition: 'Terdapat perbedaan value dari file yang diupload dan IM',
                 icon: Info,
                 color: 'text-blue-600',
                 bgColor: 'bg-blue-50 dark:bg-blue-900/20',
@@ -61,7 +64,8 @@ export default function InvalidCategoriesBarChart({
         } else if (lowerCategory.includes('im_invalid')) {
             return {
                 title: 'Perbaiki & Update IM',
-                description: 'Data IM tidak valid. Segera perbaiki data dan lakukan update Internal Memo (IM).',
+                actionDescription: 'Data IM tidak valid. Segera perbaiki data dan lakukan update Internal Memo (IM).',
+                categoryDefinition: 'ID Transaksi tidak terdaftar di IM',
                 icon: AlertTriangle,
                 color: 'text-red-600',
                 bgColor: 'bg-red-50 dark:bg-red-900/20',
@@ -69,7 +73,8 @@ export default function InvalidCategoriesBarChart({
         } else {
             return {
                 title: 'Tinjau Data',
-                description: `Masalah dominan adalah '${category}'. Silakan tinjau kembali data yang tidak valid.`,
+                actionDescription: `Silakan tinjau kembali data yang tidak valid.`,
+                categoryDefinition: `Masalah dominan adalah '${category}'`,
                 icon: Info,
                 color: 'text-gray-600',
                 bgColor: 'bg-gray-50 dark:bg-gray-800',
@@ -162,23 +167,32 @@ export default function InvalidCategoriesBarChart({
                                     </h3>
                                     <ul className="list-disc pl-4 space-y-1">
                                         <li className="text-sm font-medium text-muted-foreground leading-relaxed">
-                                            {action.description}
+                                            {action.actionDescription}
                                         </li>
                                     </ul>
                                 </div>
 
                                 {dominantCategory && (
-                                    <div className="bg-background/40 p-2 rounded border border-border/30 flex items-center justify-between gap-2">
-                                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold whitespace-nowrap">
-                                            Isu Dominan:
-                                        </span>
-                                        <span className="text-xs font-bold truncate text-foreground" title={dominantCategory}>
-                                            {dominantCategory}
-                                        </span>
+                                    <div className="bg-background/40 p-3 rounded border border-border/30">
+                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold whitespace-nowrap">
+                                                Isu Dominan:
+                                            </span>
+                                            <span className="text-xs font-bold truncate text-foreground">
+                                                {dominantCategory}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-2 mt-1">
+                                            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold whitespace-nowrap">
+                                                Penyebab Isu:
+                                            </span>
+                                            <span className="text-xs text-muted-foreground italic">
+                                                {action.categoryDefinition}
+                                            </span>
+                                        </div>
                                     </div>
                                 )}
                             </div>
-
                             <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-auto pt-2 border-t border-border/20">
                                 <Info className="w-3 h-3" />
                                 <span>Arahkan kursor keluar untuk melihat grafik</span>
