@@ -7,8 +7,7 @@ import InvalidSourcesBarChart from '@/components/InvalidSourcesBarChart';
 import MatchedGroupsTabContent from '@/components/MatchedGroupsTabContent';
 import TopDiscrepanciesChart from '@/components/TopDiscrepanciesChart';
 import ValidNotesDistributionChart from '@/components/ValidNotesDistributionChart';
-import ValidationScoreDonutChart from '@/components/ValidationScoreDonutChart';
-import ValidationStatsCards from '@/components/ValidationStatsCards';
+import ValidationSummaryCard from '@/components/ValidationSummaryCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -23,14 +22,9 @@ import AppLayout from '@/layouts/app-layout';
 import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
-    CheckCircle2,
     Download,
-    FileCheck2,
     FileText,
-    FileX2,
     Loader2,
-    Scale,
-    XCircle,
 } from 'lucide-react';
 
 import axios from 'axios';
@@ -144,7 +138,7 @@ export default function PenjualanShow() {
     const [matchedGroupsData, setMatchedGroupsData] =
         useState<PaginationData<MatchedGroupPaginated> | null>(null);
     const [matchedGroupsLoading, setMatchedGroupsLoading] = useState(false);
-    
+
     // Ref to track ongoing requests for cancellation
     const invalidGroupsAbortController = useRef<AbortController | null>(null);
     const matchedGroupsAbortController = useRef<AbortController | null>(null);
@@ -191,50 +185,7 @@ export default function PenjualanShow() {
         return validationData.invalidGroups + validationData.matchedGroups;
     }, [validationData]);
 
-    // Data untuk kartu statistik
-    const stats = useMemo(
-        () => {
-            if (!validationData) return [];
-            return [
-                {
-                    title: 'Validation Status',
-                    value: validationData.isValid ? 'Valid' : 'Invalid',
-                    icon: validationData.isValid ? CheckCircle2 : XCircle,
-                    color: validationData.isValid
-                        ? 'text-green-600'
-                        : 'text-red-600',
-                },
-                {
-                    title: 'Total Records Processed',
-                    value: validationData.total.toLocaleString('id-ID'),
-                    icon: Scale,
-                    groups: totalGroups,
-                },
 
-                {
-                    title: 'Total Matched Records',
-                    value: validationData.matched.toLocaleString('id-ID'),
-                    icon: FileCheck2,
-                    groups: validationData.matchedGroups,
-                    color:
-                        validationData.matched > 0
-                            ? 'text-green-600'
-                            : 'text-muted-foreground',
-                },
-                {
-                    title: 'Total Mismatched Records',
-                    value: validationData.mismatched.toLocaleString('id-ID'),
-                    icon: FileX2,
-                    groups: validationData.invalidGroups,
-                    color:
-                        validationData.mismatched > 0
-                            ? 'text-red-600'
-                            : 'text-muted-foreground',
-                },
-            ];
-        },
-        [validationData, totalGroups],
-    );
 
     // Debounce search terms to reduce API calls
     useEffect(() => {
@@ -313,7 +264,7 @@ export default function PenjualanShow() {
         };
 
         fetchInvalidGroups();
-        
+
         return () => {
             controller.abort();
         };
@@ -371,7 +322,7 @@ export default function PenjualanShow() {
         };
 
         fetchMatchedGroups();
-        
+
         return () => {
             controller.abort();
         };
@@ -562,50 +513,6 @@ export default function PenjualanShow() {
                                 File Validation Summary
                             </h1>
                         </div>
-                        <TooltipProvider>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Badge variant="secondary">
-                                            {validationData.fileName}
-                                        </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Uploaded file name</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Badge variant="outline">
-                                            {validationData.role}
-                                        </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>User role who uploaded this file</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Badge variant="default">
-                                            {validationData.category}
-                                        </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Document category</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Badge variant="destructive" className="bg-orange-500 hover:bg-orange-600">
-                                            Rounding: ±{validationData.roundingValue.toLocaleString('id-ID')}
-                                        </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>Rounding tolerance applied during validation</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </div>
-                        </TooltipProvider>
                     </div>
                     <Link href="/history/penjualan">
                         <Button variant="outline" className="w-full sm:w-auto">
@@ -615,34 +522,24 @@ export default function PenjualanShow() {
                     </Link>
                 </div>
 
-                {/* Horizontal Metrics Layout */}
-                <ValidationStatsCards stats={stats} />
+                {/* Top Section: Validation Summary */}
+                <ValidationSummaryCard validationData={validationData} />
 
-                {/* Charts Section */}
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                    {/* Donut Chart for Validation Score */}
-                    <ValidationScoreDonutChart
-                        score={validationData.score}
-                        matched={validationData.matched}
-                        mismatched={validationData.mismatched}
-                        totalGroups={totalGroups}
+                {/* Detailed Charts Section */}
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                    {/* Horizontal Bar Chart for Invalid Data Categories */}
+                    <InvalidCategoriesBarChart
+                        categoryCounts={chartData?.invalid?.categories || {}}
                     />
 
-                    <div className="space-y-6">
-                        {/* Horizontal Bar Chart for Invalid Data Categories */}
-                        <InvalidCategoriesBarChart
-                            categoryCounts={chartData?.invalid?.categories || {}}
-                        />
-
-                        {/* Horizontal Bar Chart for Invalid Sumber */}
-                        <InvalidSourcesBarChart
-                            sourceCounts={chartData?.invalid?.sources || {}}
-                        />
-                    </div>
+                    {/* Horizontal Bar Chart for Invalid Sumber */}
+                    <InvalidSourcesBarChart
+                        sourceCounts={chartData?.invalid?.sources || {}}
+                    />
                 </div>
 
                 {/* Second Row of Charts */}
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     {/* Top 5 Rows with Highest Selisih */}
                     <TopDiscrepanciesChart
                         topDiscrepancies={chartData?.invalid?.topDiscrepancies || []}
