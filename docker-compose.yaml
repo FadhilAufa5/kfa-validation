@@ -1,0 +1,77 @@
+services:
+    app:
+        build:
+            context: .
+            args:
+                user: sail
+                uid: 1000
+        image: kfa-validation-app
+        container_name: kfa-validation-app
+        restart: unless-stopped
+        working_dir: /var/www
+        volumes:
+            - ./:/var/www
+        networks:
+            - kfa-validation-network
+        depends_on:
+            - db
+            - redis
+
+    webserver:
+        image: nginx:alpine
+        container_name: kfa-validation-webserver
+        restart: unless-stopped
+        ports:
+            - "80:80"
+        volumes:
+            - ./:/var/www
+            - ./docker/nginx/conf.d/:/etc/nginx/conf.d/
+        networks:
+            - kfa-validation-network
+        depends_on:
+            - app
+
+    db:
+        image: mysql:8.0
+        container_name: kfa-validation-db
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE:-kfa_validation}
+            MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-password}
+            MYSQL_PASSWORD: ${DB_PASSWORD:-password}
+            MYSQL_USER: ${DB_USERNAME:-kfa_user}
+            SERVICE_TAGS: dev
+            SERVICE_NAME: mysql
+        volumes:
+            - dbdata:/var/lib/mysql
+        networks:
+            - kfa-validation-network
+        ports:
+            - "3306:3306"
+
+    redis:
+        image: redis:alpine
+        container_name: kfa-validation-redis
+        restart: unless-stopped
+        networks:
+            - kfa-validation-network
+        ports:
+            - "6379:6379"
+
+    mailpit:
+        image: axllent/mailpit
+        container_name: kfa-validation-mailpit
+        restart: unless-stopped
+        ports:
+            - "1025:1025"
+            - "8025:8025"
+        networks:
+            - kfa-validation-network
+
+networks:
+    kfa-validation-network:
+        driver: bridge
+
+volumes:
+    dbdata:
+        driver: local
