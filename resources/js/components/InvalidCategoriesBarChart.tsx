@@ -14,8 +14,12 @@ export default function InvalidCategoriesBarChart({
 }: InvalidCategoriesBarChartProps) {
     const [isFlipped, setIsFlipped] = useState(false);
 
-    const categories = Object.entries(categoryCounts).slice(0, maxCategories);
+    const sortedCategories = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]);
+    const mainCategories = sortedCategories.slice(0, maxCategories);
+    const remainingCategories = sortedCategories.slice(maxCategories);
     const maxCount = Math.max(...Object.values(categoryCounts), 1);
+    const totalCount = Object.values(categoryCounts).reduce((sum, count) => sum + count, 0);
+    const remainingCount = remainingCategories.reduce((sum, [_, count]) => sum + count, 0);
 
     // Determine the dominant category
     const getDominantCategory = () => {
@@ -113,31 +117,85 @@ export default function InvalidCategoriesBarChart({
                                 <Repeat2 className="w-4 h-4 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity" />
                             </CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
-                                {categories.length > 0 ? (
-                                    categories.map(([category, count]) => (
-                                        <div key={category} className="flex items-center gap-2">
-                                            <span className="w-24 truncate text-xs" title={category}>
-                                                {category}
-                                            </span>
-                                            <div className="relative h-6 flex-1 rounded-full bg-gray-200 dark:bg-gray-700">
-                                                <div
-                                                    className="flex h-6 items-center justify-end rounded-full bg-blue-500 pr-2 transition-all duration-500 ease-out"
-                                                    style={{
-                                                        width: `${(count / maxCount) * 100}%`,
-                                                    }}
-                                                >
-                                                    <span className="text-xs font-medium text-white">
-                                                        {count}
+                        <CardContent className="flex flex-col h-full">
+                            <div className="flex-1 space-y-3">
+                                {mainCategories.length > 0 ? (
+                                    <>
+                                        {mainCategories.map(([category, count]) => {
+                                            const percentage = totalCount > 0 ? (count / totalCount) * 100 : 0;
+                                            const barWidth = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                                            
+                                            return (
+                                                <div key={category} className="flex items-center gap-3">
+                                                    <span className="w-28 truncate text-sm font-medium" title={category}>
+                                                        {category}
                                                     </span>
+                                                    <div className="relative h-8 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                                                        <div
+                                                            className="absolute inset-y-0 left-0 flex items-center justify-end rounded-full bg-gradient-to-r from-blue-500 to-blue-600 pr-3 transition-all duration-700 ease-out shadow-sm"
+                                                            style={{
+                                                                width: `${Math.max(barWidth, 2)}%`,
+                                                            }}
+                                                        >
+                                                            <span className="text-xs font-semibold text-white drop-shadow">
+                                                                {count} ({percentage.toFixed(1)}%)
+                                                            </span>
+                                                        </div>
+                                                        {barWidth < 15 && (
+                                                            <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                                                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                                                    {percentage.toFixed(1)}%
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {remainingCategories.length > 0 && (
+                                            <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="w-28 truncate text-sm font-medium text-gray-600 dark:text-gray-400">
+                                                        Lainnya
+                                                    </span>
+                                                    <div className="relative h-8 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                                                        <div
+                                                            className="absolute inset-y-0 left-0 flex items-center justify-end rounded-full bg-gradient-to-r from-gray-400 to-gray-500 pr-3 transition-all duration-700 ease-out shadow-sm"
+                                                            style={{
+                                                                width: `${Math.max((remainingCount / maxCount) * 100, 2)}%`,
+                                                            }}
+                                                        >
+                                                            <span className="text-xs font-semibold text-white drop-shadow">
+                                                                {remainingCount} ({((remainingCount / totalCount) * 100).toFixed(1)}%)
+                                                            </span>
+                                                        </div>
+                                                        {((remainingCount / maxCount) * 100) < 15 && (
+                                                            <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                                                <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                                                    {((remainingCount / totalCount) * 100).toFixed(1)}%
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="text-xs text-muted-foreground text-center px-3">
+                                                    {remainingCategories.map(([cat, count]) => (
+                                                        <span key={cat} className="inline-block mr-2 mb-1">
+                                                            {cat} ({count})
+                                                        </span>
+                                                    ))}
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))
+                                        )}
+                                    </>
                                 ) : (
-                                    <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                                        Tidak ada data tidak valid
+                                    <div className="flex flex-1 items-center justify-center">
+                                        <div className="text-center">
+                                            <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
+                                            <div className="text-sm text-muted-foreground">
+                                                Tidak ada data tidak valid
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
